@@ -52,15 +52,21 @@ export function BetModal({ market, side, onClose, onConfirm }: Props) {
         await new Promise((r) => setTimeout(r, 1200));
       }
 
-      // 2. Unlink burner
+      // 2. Unlink burner: create + fund from privacy pool
+      // In production: backend API call triggers the full pipeline
+      // createWhisperUnlink → createFundedBurner → fund from pool
       setStep("unlink");
       await new Promise((r) => setTimeout(r, 1500));
 
-      // 3. CCTP Bridge
+      // 3. CCTP Bridge: Base Sepolia → Polygon Amoy (~15s)
+      // In production: bridgeBaseToPolygon(burnerAccount, amount)
+      // burn on Base → Iris attestation → receiveMessage on Polygon
       setStep("bridge");
       await new Promise((r) => setTimeout(r, 2000));
 
-      // 4. Polymarket bet
+      // 4. Polymarket: split USDC into outcome tokens
+      // Testnet: splitUsdc(burnerAccount, conditionId, amount)
+      // Mainnet: CLOB API POST /order with EIP-712 signed order
       setStep("bet");
       await new Promise((r) => setTimeout(r, 1500));
 

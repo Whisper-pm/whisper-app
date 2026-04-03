@@ -6,7 +6,11 @@ import { MarketCard } from "./MarketCard";
 import { BetModal } from "./BetModal";
 import { SearchFilter } from "./SearchFilter";
 
-export function Feed() {
+interface FeedProps {
+  onBetPlaced?: (market: string, side: "YES" | "NO", amount: number) => void;
+}
+
+export function Feed({ onBetPlaced }: FeedProps = {}) {
   const [markets, setMarkets] = useState<ScoredMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +107,7 @@ export function Feed() {
           side={betTarget.side}
           onClose={() => setBetTarget(null)}
           onConfirm={(amount) => {
-            console.log(`Bet: ${amount} USDC ${betTarget.side} on "${betTarget.market.raw.question}"`);
+            onBetPlaced?.(betTarget.market.raw.question, betTarget.side, amount);
             setBetTarget(null);
           }}
         />

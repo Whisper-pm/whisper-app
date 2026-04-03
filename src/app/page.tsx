@@ -12,13 +12,17 @@ export default function Home() {
   const [nullifier, setNullifier] = useState<string | null>(null);
   const [tab, setTab] = useState<"feed" | "portfolio">("feed");
 
-  // Demo balances — in production: fetch from Unlink SDK
-  const [poolBalance] = useState("0.67");
-  const [onChainBalance] = useState("3458.25");
-  const [bets] = useState([
-    { id: "1", market: "Will ETH > $5K by July 2026?", side: "YES" as const, amount: 100, odds: "62%", status: "active" as const },
-    { id: "2", market: "Russia-Ukraine Ceasefire before GTA VI?", side: "NO" as const, amount: 50, odds: "46%", status: "active" as const, pnl: 12.5 },
-  ]);
+  const [poolBalance, setPoolBalance] = useState("0.00");
+  const [onChainBalance, setOnChainBalance] = useState("0.00");
+  const [bets, setBets] = useState<Array<{ id: string; market: string; side: "YES" | "NO"; amount: number; odds: string; status: "active" | "won" | "lost" | "pending"; pnl?: number }>>([]);
+
+  // Fetch balances on load (demo values, real in production)
+  useState(() => {
+    fetch("/api/markets?limit=1").then(() => {
+      setPoolBalance("0.67");
+      setOnChainBalance("3458.25");
+    }).catch(() => {});
+  });
 
   return (
     <Providers>
@@ -60,16 +64,39 @@ export default function Home() {
               <DepositPanel
                 poolBalance={poolBalance}
                 onChainBalance={onChainBalance}
-                onDeposit={async (amt) => { console.log("Deposit", amt); }}
-                onWithdraw={async (amt) => { console.log("Withdraw", amt); }}
+                onDeposit={async (amt) => {
+                  // In production: call depositToPool from unlink-client
+                  console.log("Deposit", amt, "USDC to privacy pool");
+                  setPoolBalance((prev) => (parseFloat(prev) + amt).toFixed(2));
+                  setOnChainBalance((prev) => (parseFloat(prev) - amt).toFixed(2));
+                }}
+                onWithdraw={async (amt) => {
+                  // In production: call withdrawFromPool from unlink-client
+                  console.log("Withdraw", amt, "USDC from privacy pool");
+                  setPoolBalance((prev) => (parseFloat(prev) - amt).toFixed(2));
+                  setOnChainBalance((prev) => (parseFloat(prev) + amt).toFixed(2));
+                }}
               />
             </div>
 
             {/* Content */}
             {tab === "feed" ? (
-              <Feed />
+              <Feed onBetPlaced={(market, side, amount) => {
+                setBets((prev) => [
+                  ...prev,
+                  {
+                    id: "bet-" + Date.now(),
+                    market: market.substring(0, 60),
+                    side,
+                    amount,
+                    odds: "50%",
+                    status: "active" as const,
+                  },
+                ]);
+                setPoolBalance((prev) => (parseFloat(prev) - amount).toFixed(2));
+              }} />
             ) : (
-              <Portfolio bets={bets} totalPnl={12.5} />
+              <Portfolio bets={bets} totalPnl={bets.reduce((acc, b) => acc + (b.pnl ?? 0), 0)} />
             )}
           </>
         )}
