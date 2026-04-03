@@ -88,7 +88,7 @@ export async function bridgeBaseToPolygon(
     address: CONFIG.cctp.usdcBaseSepolia,
     abi: erc20Abi,
     functionName: "approve",
-    args: [CONFIG.cctp.tokenMessenger, amount],
+    args: [CONFIG.cctp.tokenMinter, amount],
   });
   await srcPublic.waitForTransactionReceipt({ hash: approveHash });
 
@@ -142,7 +142,7 @@ export async function bridgePolygonToBase(
     address: CONFIG.cctp.usdcPolygonAmoy,
     abi: erc20Abi,
     functionName: "approve",
-    args: [CONFIG.cctp.tokenMessenger, amount],
+    args: [CONFIG.cctp.tokenMinter, amount],
   });
   await srcPublic.waitForTransactionReceipt({ hash: approveHash });
 

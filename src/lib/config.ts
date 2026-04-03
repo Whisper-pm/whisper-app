@@ -27,6 +27,7 @@ export const CONFIG = {
   // CCTP V2
   cctp: {
     tokenMessenger: "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,
+    tokenMinter: "0xb43db544E2c27092c107639Ad201b3dEfAbcF192" as `0x${string}`,
     messageTransmitter: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`,
     usdcBaseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as `0x${string}`,
     usdcPolygonAmoy: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582" as `0x${string}`,
