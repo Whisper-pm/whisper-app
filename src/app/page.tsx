@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Providers } from "./providers";
 import { Header } from "@/components/Header";
 import { WorldIdGate } from "@/components/WorldIdGate";
@@ -8,21 +8,41 @@ import { Feed } from "@/components/Feed";
 import { DepositPanel } from "@/components/DepositPanel";
 import { Portfolio } from "@/components/Portfolio";
 
+// For hackathon demo: private key is passed to server APIs
+// In production: user signs in browser, backend uses session
+const DEMO_PK = "0x47b0a088fc62101d8aefc501edec2266ff2fc4cf84c93a8e6c315dedb0d942be";
+
 export default function Home() {
   const [nullifier, setNullifier] = useState<string | null>(null);
   const [tab, setTab] = useState<"feed" | "portfolio">("feed");
-
-  const [poolBalance, setPoolBalance] = useState("0.00");
-  const [onChainBalance, setOnChainBalance] = useState("0.00");
+  const [poolBalance, setPoolBalance] = useState("...");
+  const [onChainBalance, setOnChainBalance] = useState("...");
   const [bets, setBets] = useState<Array<{ id: string; market: string; side: "YES" | "NO"; amount: number; odds: string; status: "active" | "won" | "lost" | "pending"; pnl?: number }>>([]);
 
-  // Fetch balances on load (demo values, real in production)
-  useState(() => {
-    fetch("/api/markets?limit=1").then(() => {
-      setPoolBalance("0.67");
-      setOnChainBalance("3458.25");
-    }).catch(() => {});
-  });
+  // Fetch real balances from backend
+  const fetchBalances = useCallback(async () => {
+    try {
+      const res = await fetch("/api/balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evmPrivateKey: DEMO_PK }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPoolBalance(data.pool);
+        setOnChainBalance(data.usdc);
+      }
+    } catch {}
+  }, []);
+
+  // Load balances when verified
+  useEffect(() => {
+    if (nullifier) {
+      fetchBalances();
+      const interval = setInterval(fetchBalances, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [nullifier, fetchBalances]);
 
   return (
     <Providers>
@@ -34,7 +54,6 @@ export default function Home() {
           </WorldIdGate>
         ) : (
           <>
-            {/* Top bar: deposit + tabs */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
               <div className="lg:col-span-2">
                 <div className="flex items-center gap-3 mb-1">
@@ -42,6 +61,7 @@ export default function Home() {
                   <span className="text-xs bg-green-900/50 text-green-400 border border-green-500/30 px-2 py-0.5 rounded">
                     Verified Human
                   </span>
+                  <span className="text-xs text-gray-600 font-mono">{nullifier?.substring(0, 16)}...</span>
                 </div>
                 <p className="text-sm text-gray-500">
                   AI-curated predictions. Private bets. Hardware-signed.
@@ -57,7 +77,7 @@ export default function Home() {
                     onClick={() => setTab("portfolio")}
                     className={`text-sm px-4 py-1.5 rounded-lg ${tab === "portfolio" ? "bg-white text-black font-semibold" : "bg-gray-900 text-gray-400 hover:text-white"}`}
                   >
-                    Portfolio
+                    Portfolio ({bets.length})
                   </button>
                 </div>
               </div>
@@ -65,21 +85,36 @@ export default function Home() {
                 poolBalance={poolBalance}
                 onChainBalance={onChainBalance}
                 onDeposit={async (amt) => {
-                  // In production: call depositToPool from unlink-client
-                  console.log("Deposit", amt, "USDC to privacy pool");
-                  setPoolBalance((prev) => (parseFloat(prev) + amt).toFixed(2));
-                  setOnChainBalance((prev) => (parseFloat(prev) - amt).toFixed(2));
+                  const res = await fetch("/api/deposit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount: String(Math.floor(amt * 1e6)), evmPrivateKey: DEMO_PK }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setPoolBalance(data.poolBalance);
+                    setOnChainBalance(data.walletBalance);
+                  } else {
+                    throw new Error(data.error);
+                  }
                 }}
                 onWithdraw={async (amt) => {
-                  // In production: call withdrawFromPool from unlink-client
-                  console.log("Withdraw", amt, "USDC from privacy pool");
-                  setPoolBalance((prev) => (parseFloat(prev) - amt).toFixed(2));
-                  setOnChainBalance((prev) => (parseFloat(prev) + amt).toFixed(2));
+                  const res = await fetch("/api/withdraw", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount: String(Math.floor(amt * 1e6)), evmPrivateKey: DEMO_PK }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setPoolBalance(data.poolBalance);
+                    setOnChainBalance(data.walletBalance);
+                  } else {
+                    throw new Error(data.error);
+                  }
                 }}
               />
             </div>
 
-            {/* Content */}
             {tab === "feed" ? (
               <Feed onBetPlaced={(market, side, amount) => {
                 setBets((prev) => [
@@ -93,7 +128,7 @@ export default function Home() {
                     status: "active" as const,
                   },
                 ]);
-                setPoolBalance((prev) => (parseFloat(prev) - amount).toFixed(2));
+                fetchBalances();
               }} />
             ) : (
               <Portfolio bets={bets} totalPnl={bets.reduce((acc, b) => acc + (b.pnl ?? 0), 0)} />
