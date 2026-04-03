@@ -36,41 +36,47 @@ export function BetModal({ market, side, onClose, onConfirm }: Props) {
     if (!amt || amt <= 0) return;
 
     try {
-      // 1. Ledger signing
+      // 1. Ledger signing (requires physical device via WebHID)
       setStep("ledger");
-      try {
-        const { signBetWithLedger } = await import("@/lib/ledger");
-        await signBetWithLedger({
-          market: raw.question,
+      const { signBetWithLedger } = await import("@/lib/ledger");
+      await signBetWithLedger({
+        market: raw.question,
+        conditionId: raw.conditionId,
+        side,
+        amount: String(Math.floor(amt * 1e6)),
+        aiAnalysis: `Odds: ${analysis.odds} | EV: ${analysis.ev} | Risk: ${analysis.risk}`,
+      }).catch(() => {
+        // Ledger not connected: will fail in production, ok for demo without device
+      });
+
+      // 2-4. Execute full pipeline via backend API
+      // Backend does: Unlink deposit → Burner → CCTP bridge → Polymarket split
+      setStep("unlink");
+      const res = await fetch("/api/bet/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           conditionId: raw.conditionId,
           side,
           amount: String(Math.floor(amt * 1e6)),
-          aiAnalysis: `Odds: ${analysis.odds} | EV: ${analysis.ev} | Risk: ${analysis.risk}`,
-        });
-      } catch {
-        // Ledger not connected — proceed with software signing for demo
-        await new Promise((r) => setTimeout(r, 1200));
+          evmPrivateKey: "0x0", // In production: user signs, backend executes
+        }),
+      });
+
+      const data = await res.json();
+
+      // Update steps based on backend progress
+      if (data.steps) {
+        for (const s of data.steps) {
+          if (s.step.includes("bridge") || s.step.includes("cctp")) setStep("bridge");
+          if (s.step.includes("polymarket") || s.step.includes("split")) setStep("bet");
+        }
       }
 
-      // 2. Unlink burner: create + fund from privacy pool
-      // In production: backend API call triggers the full pipeline
-      // createWhisperUnlink → createFundedBurner → fund from pool
-      setStep("unlink");
-      await new Promise((r) => setTimeout(r, 1500));
+      if (!data.success) {
+        throw new Error(data.error ?? "Pipeline failed");
+      }
 
-      // 3. CCTP Bridge: Base Sepolia → Polygon Amoy (~15s)
-      // In production: bridgeBaseToPolygon(burnerAccount, amount)
-      // burn on Base → Iris attestation → receiveMessage on Polygon
-      setStep("bridge");
-      await new Promise((r) => setTimeout(r, 2000));
-
-      // 4. Polymarket: split USDC into outcome tokens
-      // Testnet: splitUsdc(burnerAccount, conditionId, amount)
-      // Mainnet: CLOB API POST /order with EIP-712 signed order
-      setStep("bet");
-      await new Promise((r) => setTimeout(r, 1500));
-
-      // Done
       setStep("done");
       onConfirm(amt);
     } catch (e: any) {
