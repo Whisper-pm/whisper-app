@@ -2,67 +2,37 @@
 
 import { useIDKitRequest, orbLegacy } from "@worldcoin/idkit";
 import { CONFIG } from "@/lib/config";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
   onVerified?: (nullifierHash: string) => void;
 }
 
-function RealWorldIdButton({ onSuccess, loading: parentLoading }: { onSuccess: (proof: any) => void; loading: boolean }) {
-  const [rpContext, setRpContext] = useState<any>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+// This component only renders AFTER rp_context is loaded
+function WorldIdButton({ rpContext, onProof }: { rpContext: any; onProof: (p: any) => void }) {
+  const { open, result, errorCode } = useIDKitRequest({
+    app_id: CONFIG.worldId.appId as `app_${string}`,
+    action: CONFIG.worldId.action,
+    preset: orbLegacy(),
+    rp_context: rpContext,
+    allow_legacy_proofs: true,
+  });
 
-  // Fetch signed rp_context from backend on mount
   useEffect(() => {
-    fetch("/api/worldid")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.rp_context) setRpContext(d.rp_context);
-        else setFetchError(d.error ?? "Failed to get rp_context");
-      })
-      .catch((e) => setFetchError(e.message));
-  }, []);
-
-  const hookConfig = rpContext
-    ? {
-        app_id: CONFIG.worldId.appId as `app_${string}`,
-        action: CONFIG.worldId.action,
-        preset: orbLegacy(),
-        rp_context: rpContext,
-        allow_legacy_proofs: true,
-      }
-    : null;
-
-  const { open, result, errorCode } = useIDKitRequest(
-    hookConfig ?? {
-      app_id: CONFIG.worldId.appId as `app_${string}`,
-      action: CONFIG.worldId.action,
-      preset: orbLegacy(),
-      rp_context: { rp_id: "rp_placeholder", nonce: "0x00", created_at: Math.floor(Date.now()/1000), expires_at: Math.floor(Date.now()/1000) + 300, signature: "0x00" },
-      allow_legacy_proofs: true,
-    }
-  );
-
-  // When we get a result, forward it
-  useEffect(() => {
-    if (result && !parentLoading) {
-      onSuccess(result);
-    }
-  }, [result, parentLoading, onSuccess]);
-
-  if (fetchError) {
-    return <p className="text-xs text-red-400">World ID setup error: {fetchError}</p>;
-  }
+    if (result) onProof(result);
+  }, [result, onProof]);
 
   return (
-    <button
-      onClick={() => rpContext && open()}
-      disabled={parentLoading || !rpContext}
-      className="bg-white text-black font-semibold px-10 py-3.5 rounded-full hover:bg-gray-100 transition disabled:opacity-50 shadow-lg"
-    >
-      {parentLoading ? "Verifying..." : !rpContext ? "Loading World ID..." : "Verify with World ID"}
-    </button>
+    <div className="flex flex-col items-center gap-2">
+      <button
+        onClick={() => open()}
+        className="bg-white text-black font-semibold px-10 py-3.5 rounded-full hover:bg-gray-100 transition shadow-lg cursor-pointer"
+      >
+        Verify with World ID
+      </button>
+      {errorCode && <p className="text-xs text-red-400">Error: {String(errorCode)}</p>}
+    </div>
   );
 }
 
@@ -70,8 +40,25 @@ export function WorldIdGate({ children, onVerified }: Props) {
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rpContext, setRpContext] = useState<any>(null);
+  const [contextLoading, setContextLoading] = useState(true);
 
-  async function handleSuccess(proof: any) {
+  // Fetch signed rp_context from backend
+  useEffect(() => {
+    fetch("/api/worldid")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.rp_context) {
+          setRpContext(d.rp_context);
+        } else {
+          setError(d.error ?? "Failed to load World ID config");
+        }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setContextLoading(false));
+  }, []);
+
+  const handleProof = useCallback(async (proof: any) => {
     if (loading || verified) return;
     setLoading(true);
     setError(null);
@@ -93,7 +80,7 @@ export function WorldIdGate({ children, onVerified }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [loading, verified, onVerified]);
 
   if (verified) return <>{children}</>;
 
@@ -115,7 +102,17 @@ export function WorldIdGate({ children, onVerified }: Props) {
       </div>
 
       <div className="flex flex-col gap-3 items-center">
-        <RealWorldIdButton onSuccess={handleSuccess} loading={loading} />
+        {contextLoading ? (
+          <button disabled className="bg-gray-700 text-gray-400 font-semibold px-10 py-3.5 rounded-full opacity-50">
+            Loading World ID...
+          </button>
+        ) : rpContext ? (
+          <WorldIdButton rpContext={rpContext} onProof={handleProof} />
+        ) : (
+          <p className="text-xs text-red-400">World ID config error</p>
+        )}
+
+        {loading && <p className="text-xs text-yellow-400 animate-pulse">Verifying proof...</p>}
         <p className="text-xs text-green-600">World ID 4.0</p>
       </div>
 
