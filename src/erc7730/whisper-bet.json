@@ -1,0 +1,79 @@
+{
+  "$schema": "https://eips.ethereum.org/assets/eip-7730/erc7730-v1.schema.json",
+  "context": {
+    "eip712": {
+      "schemas": [
+        {
+          "primaryType": "PlaceBet",
+          "types": {
+            "EIP712Domain": [
+              { "name": "name", "type": "string" },
+              { "name": "version", "type": "string" },
+              { "name": "chainId", "type": "uint256" }
+            ],
+            "PlaceBet": [
+              { "name": "conditionId", "type": "bytes32" },
+              { "name": "side", "type": "uint8" },
+              { "name": "amount", "type": "uint256" },
+              { "name": "timestamp", "type": "uint256" }
+            ]
+          }
+        }
+      ],
+      "domain": {
+        "name": "Whisper Private Bet",
+        "version": "1",
+        "chainId": 84532
+      }
+    }
+  },
+  "metadata": {
+    "owner": "Whisper",
+    "info": {
+      "url": "https://github.com/Whisper-pm",
+      "legalName": "Whisper Protocol"
+    },
+    "enums": {
+      "side": {
+        "0": "NO",
+        "1": "YES"
+      }
+    }
+  },
+  "display": {
+    "formats": {
+      "PlaceBet": {
+        "intent": "Place Prediction Bet",
+        "fields": [
+          {
+            "path": "conditionId",
+            "label": "Market ID",
+            "format": "raw"
+          },
+          {
+            "path": "side",
+            "label": "Position",
+            "format": "enum",
+            "params": {
+              "$ref": "$.metadata.enums.side"
+            }
+          },
+          {
+            "path": "amount",
+            "label": "Bet Amount",
+            "format": "tokenAmount",
+            "params": {
+              "tokenPath": "@.to",
+              "nativeCurrencyAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+            }
+          },
+          {
+            "path": "timestamp",
+            "label": "Time",
+            "format": "date"
+          }
+        ]
+      }
+    }
+  }
+}

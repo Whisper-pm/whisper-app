@@ -1,0 +1,110 @@
+{
+  "$schema": "https://eips.ethereum.org/assets/eip-7730/erc7730-v1.schema.json",
+  "context": {
+    "eip712": {
+      "schemas": [
+        {
+          "primaryType": "Order",
+          "types": {
+            "EIP712Domain": [
+              { "name": "name", "type": "string" },
+              { "name": "version", "type": "string" },
+              { "name": "chainId", "type": "uint256" },
+              { "name": "verifyingContract", "type": "address" }
+            ],
+            "Order": [
+              { "name": "salt", "type": "uint256" },
+              { "name": "maker", "type": "address" },
+              { "name": "signer", "type": "address" },
+              { "name": "taker", "type": "address" },
+              { "name": "tokenId", "type": "uint256" },
+              { "name": "makerAmount", "type": "uint256" },
+              { "name": "takerAmount", "type": "uint256" },
+              { "name": "expiration", "type": "uint256" },
+              { "name": "nonce", "type": "uint256" },
+              { "name": "feeRateBps", "type": "uint256" },
+              { "name": "side", "type": "uint8" },
+              { "name": "signatureType", "type": "uint8" }
+            ]
+          }
+        }
+      ],
+      "domain": {
+        "name": "Polymarket CTF Exchange",
+        "version": "1",
+        "chainId": 137,
+        "verifyingContract": "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
+      }
+    }
+  },
+  "metadata": {
+    "owner": "Polymarket",
+    "info": {
+      "url": "https://polymarket.com",
+      "legalName": "Polymarket Inc."
+    },
+    "enums": {
+      "side": {
+        "0": "BUY",
+        "1": "SELL"
+      },
+      "signatureType": {
+        "0": "EOA",
+        "1": "POLY_PROXY",
+        "2": "POLY_GNOSIS_SAFE"
+      }
+    }
+  },
+  "display": {
+    "formats": {
+      "Order": {
+        "intent": "Polymarket Trade Order",
+        "fields": [
+          {
+            "path": "tokenId",
+            "label": "Outcome Token",
+            "format": "raw"
+          },
+          {
+            "path": "side",
+            "label": "Side",
+            "format": "enum",
+            "params": {
+              "$ref": "$.metadata.enums.side"
+            }
+          },
+          {
+            "path": "makerAmount",
+            "label": "You Pay",
+            "format": "tokenAmount",
+            "params": {
+              "tokenPath": "@.to",
+              "nativeCurrencyAddress": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+            }
+          },
+          {
+            "path": "takerAmount",
+            "label": "You Receive",
+            "format": "raw"
+          },
+          {
+            "path": "maker",
+            "label": "From",
+            "format": "addressOrName"
+          },
+          {
+            "path": "expiration",
+            "label": "Expires",
+            "format": "date"
+          },
+          {
+            "path": "feeRateBps",
+            "label": "Fee Rate (bps)",
+            "format": "raw"
+          }
+        ],
+        "excluded": ["salt", "nonce", "signer", "taker", "signatureType"]
+      }
+    }
+  }
+}
