@@ -25,29 +25,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Force Ledger modal above everything */
-ledger-button-toplevel,
-ledger-core-modal,
-[class*="ledger"] {
-  z-index: 99999 !important;
-}
-
-/* Also target shadow DOM host elements */
-:host(ledger-button-toplevel),
-:host(ledger-core-modal) {
-  z-index: 99999 !important;
-}
-
-/* Fix Ledger modal positioning — center it properly */
-ledger-button-app,
-LEDGER-BUTTON-APP {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
+/* Ledger Button — only style when modal is open */
+ledger-button-app {
   z-index: 999999 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
 }
