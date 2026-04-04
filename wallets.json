@@ -25,6 +25,20 @@
         "cctpBurn": "0xb94391b194aab3735afea6c56bb37127bbf0925e11905af60285ea45dcbaf73d",
         "splitPosition": "0x81c427e8c1ae83920895712f3b44510bc3db1f724b7d5bc7b4d56d738deff224"
       }
+    },
+    {
+      "burnerAddress": "0x9aD7917dC022e36Eb4fA9028123176fbEC1e98bC",
+      "createdAt": "2026-04-04T17:46:51.762Z",
+      "parentEvmAddress": "0xe13D91ad3186cA094E202da8795A9b0DcC250D19",
+      "market": "Will ETH reach $10K by end of 2026?",
+      "side": "YES",
+      "amount": "0.1",
+      "status": "bet_placed",
+      "txHashes": {
+        "cctpBurn": "0x24d2909e040e5c3133d091617929c81b8bf048d29a0426a63f1a6635f47b1e58",
+        "cctpReceive": "0xa7285bfbdf3a33a4c3bf5a6a5cc886c245015ac20e87080bd1aa62550b7ef9be",
+        "splitPosition": "0xd4f6745bffbc1ccbdf87a3da4b571a82015e648e69417f2a469b0e28294dc555"
+      }
     }
   ]
 }
