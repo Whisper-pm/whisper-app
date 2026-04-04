@@ -19,6 +19,9 @@ createAppKit({
     icons: ["/Whisper.svg"],
   },
   themeMode: "dark",
+  featuredWalletIds: [
+    "19177a98252e07ddfc9af2083ba8e07ef627cb6103467ffebb3f8f4205fd7927", // Ledger Live — first in list
+  ],
   features: {
     analytics: false,
   },

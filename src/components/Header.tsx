@@ -1,31 +1,10 @@
 "use client";
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
-import { useEffect, useRef } from "react";
 
 export function Header() {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
-  const ledgerButtonRef = useRef<HTMLDivElement>(null);
-
-  // Mount Ledger Button next to Connect Wallet
-  useEffect(() => {
-    if (typeof window === "undefined" || !ledgerButtonRef.current) return;
-
-    import("@ledgerhq/ledger-wallet-provider").then((module) => {
-      const container = ledgerButtonRef.current;
-      if (!container || container.childElementCount > 0) return;
-
-      module.initializeLedgerProvider({
-        target: container,
-        floatingButtonPosition: undefined, // No floating — render inline in container
-        dAppIdentifier: "whisper",
-        apiKey: "1e55ba3959f4543af24809d9066a2120bd2ac9246e626e26a1ff77eb109ca0e5",
-        loggerLevel: "info",
-        environment: "production",
-      });
-    });
-  }, []);
 
   return (
     <header className="border-b border-gray-800 px-6 py-4">
@@ -45,10 +24,6 @@ export function Header() {
             <span>Polymarket</span>
           </div>
 
-          {/* Ledger Button — inline, opens Bluetooth/USB modal */}
-          <div ref={ledgerButtonRef} className="inline-flex" />
-
-          {/* Reown Connect Wallet */}
           {isConnected ? (
             <button
               onClick={() => open()}
