@@ -35,6 +35,13 @@ export async function connectLedger(_method?: "usb" | "bluetooth"): Promise<stri
   const TransportWebHID = (await import("@ledgerhq/hw-transport-webhid")).default;
   const Eth = (await import("@ledgerhq/hw-app-eth")).default;
 
+  // Close any existing transport first
+  if (transport) {
+    try { await transport.close(); } catch {}
+    transport = null;
+    ethApp = null;
+  }
+
   console.log("[Ledger] Opening WebHID transport...");
   transport = await TransportWebHID.create();
   console.log("[Ledger] Transport opened");

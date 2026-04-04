@@ -37,7 +37,7 @@ export function Header() {
                   ledger.open();
                 }
               }}
-              title={ledger.address || "Connect Ledger"}
+              title={ledger.address ?? undefined}
               className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition border ${
                 ledger.address
                   ? "bg-green-900/30 border-green-500/30 text-green-400"
