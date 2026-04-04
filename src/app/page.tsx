@@ -9,7 +9,7 @@ import { Feed } from "@/components/Feed";
 import { DepositPanel } from "@/components/DepositPanel";
 import { Portfolio } from "@/components/Portfolio";
 import { AgentDashboard } from "@/components/AgentDashboard";
-import { LedgerInit } from "@/components/LedgerConnect";
+
 
 function AppContent() {
   const { address, isConnected } = useAppKitAccount();
@@ -81,7 +81,6 @@ function AppContent() {
   return (
     <>
       <Header />
-      <LedgerInit />
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
         <>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">

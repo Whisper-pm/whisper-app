@@ -10,6 +10,7 @@ import {
   type DeviceSessionId,
 } from "@ledgerhq/device-management-kit";
 import { webHidTransportFactory } from "@ledgerhq/device-transport-kit-web-hid";
+import { webBleTransportFactory } from "@ledgerhq/device-transport-kit-web-ble";
 import {
   SignerEthBuilder,
   type SignerEth,
@@ -74,7 +75,8 @@ export async function initLedgerDMK(): Promise<DeviceManagementKit> {
     console.log("[Ledger] Using Speculos transport (localhost:40000)");
   } else {
     builder.addTransport(webHidTransportFactory);
-    console.log("[Ledger] Using WebHID transport");
+    builder.addTransport(webBleTransportFactory);
+    console.log("[Ledger] Using WebHID + WebBLE transports");
   }
 
   dmk = builder.build();
@@ -85,12 +87,21 @@ export async function initLedgerDMK(): Promise<DeviceManagementKit> {
  * Connect to a Ledger device.
  * Injects the Whisper ERC-7730 context module so the device displays
  * human-readable prediction market details during Clear Signing.
+ *
+ * @param method - "usb" (WebHID), "bluetooth" (WebBLE), or auto-detect
  */
-export async function connectLedger(): Promise<DeviceSessionId> {
+export async function connectLedger(method?: "usb" | "bluetooth"): Promise<DeviceSessionId> {
   const kit = await initLedgerDMK();
 
   return new Promise((resolve, reject) => {
-    const transport = USE_SPECULOS ? "SPECULOS" : "WEB_HID";
+    let transport: string;
+    if (USE_SPECULOS) {
+      transport = "SPECULOS";
+    } else if (method === "bluetooth") {
+      transport = "WEB_BLE";
+    } else {
+      transport = "WEB_HID";
+    }
     const observable = kit.startDiscovering({ transport } as any);
     const sub = observable.subscribe({
       next: async (device) => {
