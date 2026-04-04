@@ -16,6 +16,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { CONFIG } from "@/lib/config";
+import { addBet } from "@/lib/store";
+import { addBurner, updateBurner } from "@/lib/wallet-store";
 import crypto from "crypto";
 
 const USDC_BASE = CONFIG.unlink.usdc;
@@ -42,7 +44,7 @@ const amoyChain = { id: 80002, name: "Amoy" as const, nativeCurrency: { name: "M
 // Execute the REAL bet pipeline: Unlink → Bridge → Polymarket
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { conditionId, side, amount, evmPrivateKey } = body;
+  const { conditionId, side, amount, evmPrivateKey, nullifier, marketQuestion, odds } = body;
 
   if (!conditionId || !side || !amount || !evmPrivateKey) {
     return NextResponse.json({ error: "Missing conditionId, side, amount, or evmPrivateKey" }, { status: 400 });
@@ -86,6 +88,20 @@ export async function POST(req: NextRequest) {
     await burner.fundFromPool(client, { senderKeys: keys, token: USDC_BASE, amount: String(amountBigint), environment: "base-sepolia" });
     log("unlink:burner", "done", undefined, "burner: " + burner.address);
 
+    // Track burner in JSON store
+    const unlinkAddr = await unlink.getAddress();
+    addBurner({
+      burnerAddress: burner.address,
+      createdAt: new Date().toISOString(),
+      parentEvmAddress: account.address,
+      unlinkAddress: unlinkAddr,
+      market: marketQuestion,
+      side,
+      amount: formatUnits(amountBigint, 6),
+      status: "funded",
+      txHashes: {},
+    });
+
     // Wait for burner funding
     await new Promise((r) => setTimeout(r, 8000));
 
@@ -107,6 +123,7 @@ export async function POST(req: NextRequest) {
     });
     await basePub.waitForTransactionReceipt({ hash: burnTx });
     log("cctp:burn", "done", burnTx);
+    updateBurner(burner.address, { status: "bridged", txHashes: { cctpBurn: burnTx } });
 
     // Attestation
     const irisUrl = `${CONFIG.cctp.iris}/v2/messages/${CONFIG.cctp.domains.baseSepolia}?transactionHash=${burnTx}`;
@@ -136,17 +153,56 @@ export async function POST(req: NextRequest) {
     });
     await amoyPub.waitForTransactionReceipt({ hash: receiveTx });
     log("cctp:receive", "done", receiveTx);
+    updateBurner(burner.address, { txHashes: { cctpReceive: receiveTx } });
 
-    // Step 4: Polymarket split
+    // Step 4: Prepare condition on Amoy testnet + split
+    log("polymarket:prepare", "started");
+    const { keccak256, encodePacked } = await import("viem");
+    const questionText = marketQuestion || conditionId;
+    const questionId = keccak256(encodePacked(["string"], [questionText]));
+    const oracle = burnerAccount.address;
+    const testnetConditionId = keccak256(encodePacked(["address", "bytes32", "uint256"], [oracle, questionId, 2n]));
+
+    // prepareCondition on Amoy CTF (creates the condition if it doesn't exist)
+    try {
+      const prepareTx = await burnerAmoyWallet.writeContract({
+        address: CTF, abi: ctfAbi, functionName: "prepareCondition",
+        args: [oracle, questionId, 2n],
+      });
+      await amoyPub.waitForTransactionReceipt({ hash: prepareTx });
+      log("polymarket:prepare", "done", prepareTx, "conditionId: " + testnetConditionId);
+    } catch (e: any) {
+      // Condition may already exist — that's fine
+      log("polymarket:prepare", "exists", undefined, testnetConditionId);
+    }
+
+    // Approve + split on testnet
     log("polymarket:split", "started");
     await burnerAmoyWallet.writeContract({ address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, amountBigint] });
     const ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
     const splitTx = await burnerAmoyWallet.writeContract({
       address: CTF, abi: ctfAbi, functionName: "splitPosition",
-      args: [USDC_AMOY, ZERO, conditionId as `0x${string}`, [1n, 2n], amountBigint],
+      args: [USDC_AMOY, ZERO, testnetConditionId, [1n, 2n], amountBigint],
     });
     await amoyPub.waitForTransactionReceipt({ hash: splitTx });
     log("polymarket:split", "done", splitTx);
+    updateBurner(burner.address, { status: "bet_placed", txHashes: { splitPosition: splitTx } });
+
+    // Persist bet to in-memory store
+    const amountUsdc = parseFloat(formatUnits(amountBigint, 6));
+    let savedBet = null;
+    if (nullifier) {
+      savedBet = addBet(nullifier, {
+        market: marketQuestion || `Market ${conditionId.substring(0, 10)}...`,
+        conditionId,
+        side,
+        amount: amountUsdc,
+        odds: odds || "50%",
+        status: "active",
+        burner: burner.address,
+        txHash: splitTx,
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -154,6 +210,7 @@ export async function POST(req: NextRequest) {
       burner: burner.address,
       side,
       amount: formatUnits(amountBigint, 6) + " USDC",
+      bet: savedBet,
     });
   } catch (e: any) {
     log("error", "failed", undefined, e.message);
