@@ -123,18 +123,17 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
     if (!amt || amt <= 0) return;
 
     try {
-      // Detect if wallet is Ledger (connected via Reown/WalletConnect)
-      // When connected via Ledger Live, the ERC-7730 descriptors make the
-      // Ledger device display AI analysis (score, risk, thesis) during signing.
-      // For non-Ledger wallets, we skip the Ledger step entirely.
       let ledgerSignature: string | undefined;
       let ledgerAddress: string | undefined;
 
-      // Try Ledger signing — if wallet is Ledger, the device shows Clear Signing
-      // If not Ledger (MetaMask, Rabby), this silently skips
-      try {
+      // Check if Ledger is connected (from wallet context)
+      const { isLedgerConnected, getLedgerAddress } = await import("@/lib/ledger");
+      const useLedger = isLedgerConnected();
+
+      if (useLedger) {
+        // Sign on Ledger — device shows AI analysis via Clear Signing
         setStep("ledger");
-        const { signBetWithLedger, formatThesisForLedger, liquidityToMicroUsdc, getLedgerAddress } = await import("@/lib/ledger");
+        const { signBetWithLedger, formatThesisForLedger, liquidityToMicroUsdc } = await import("@/lib/ledger");
 
         const aiScore = analysis.score ?? 50;
         const riskLevel = analysis.risk ?? "MEDIUM";
@@ -154,10 +153,8 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
           liquidityUsd: liquidityToMicroUsdc(liqNum),
         });
 
-        ledgerSignature = ledgerResult?.signature;
-        ledgerAddress = await getLedgerAddress().catch(() => undefined);
-      } catch {
-        // No Ledger connected — that's fine, continue with normal wallet
+        ledgerSignature = ledgerResult.signature;
+        ledgerAddress = await getLedgerAddress();
       }
 
       // 2-4. Execute full pipeline via backend API

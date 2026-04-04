@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { createAppKit } from "@reown/appkit/react";
 import { baseSepolia } from "@reown/appkit/networks";
 import { wagmiAdapter, projectId } from "@/lib/wagmi";
+import { WalletProvider } from "@/lib/wallet-context";
 
 // Initialize Reown AppKit
 createAppKit({
@@ -33,7 +34,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={wagmiAdapter.wagmiConfig as Config}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <WalletProvider>
+          {children}
+        </WalletProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

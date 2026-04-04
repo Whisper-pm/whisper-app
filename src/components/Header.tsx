@@ -1,12 +1,32 @@
 "use client";
 
-import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
-import { useLedgerConnect, LedgerConnectModal } from "@/components/LedgerConnect";
+import { useState } from "react";
+import { useAppKit } from "@reown/appkit/react";
+import { useWallet } from "@/lib/wallet-context";
+import { LedgerConnectModal } from "@/components/LedgerConnect";
 
 export function Header() {
   const { open } = useAppKit();
-  const { address, isConnected } = useAppKitAccount();
-  const ledger = useLedgerConnect();
+  const wallet = useWallet();
+  const [ledgerModalOpen, setLedgerModalOpen] = useState(false);
+  const [ledgerStep, setLedgerStep] = useState<"select" | "connecting" | "connected" | "error">("select");
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [ledgerTransport, setLedgerTransport] = useState<"usb" | "bluetooth" | null>(null);
+
+  const handleLedgerConnect = async (method: "usb" | "bluetooth") => {
+    setLedgerTransport(method);
+    setLedgerStep("connecting");
+    setLedgerError(null);
+    try {
+      await wallet.connectLedger();
+      setLedgerStep("connected");
+      setTimeout(() => setLedgerModalOpen(false), 1200);
+    } catch (err: any) {
+      console.error("[Ledger] Connection failed:", err);
+      setLedgerError(err?.message || "Connection failed");
+      setLedgerStep("error");
+    }
+  };
 
   return (
     <>
@@ -30,16 +50,17 @@ export function Header() {
             {/* Ledger button */}
             <button
               onClick={() => {
-                if (ledger.address) {
-                  navigator.clipboard.writeText(ledger.address);
-                  console.log("[Ledger] Address copied:", ledger.address);
+                if (wallet.isLedgerConnected && wallet.ledgerAddress) {
+                  navigator.clipboard.writeText(wallet.ledgerAddress);
                 } else {
-                  ledger.open();
+                  setLedgerStep("select");
+                  setLedgerError(null);
+                  setLedgerModalOpen(true);
                 }
               }}
-              title={ledger.address ?? undefined}
+              title={wallet.ledgerAddress ?? undefined}
               className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition border ${
-                ledger.address
+                wallet.isLedgerConnected
                   ? "bg-green-900/30 border-green-500/30 text-green-400"
                   : "bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
               }`}
@@ -47,37 +68,40 @@ export function Header() {
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M0 11.4V16H6.05V14.93H1.07V11.4H0ZM14.93 11.4V14.93H9.95V16H16V11.4H14.93ZM6.05 6.05H9.95V9.95H6.05V6.05ZM0 0V4.6H1.07V1.07H6.05V0H0ZM14.93 1.07V4.6H16V0H9.95V1.07H14.93Z" fill="currentColor"/>
               </svg>
-              {ledger.address
-                ? `${ledger.address.slice(0, 6)}...${ledger.address.slice(-4)}`
+              {wallet.isLedgerConnected && wallet.ledgerAddress
+                ? `${wallet.ledgerAddress.slice(0, 6)}...${wallet.ledgerAddress.slice(-4)}`
                 : "Ledger"}
             </button>
 
-            {isConnected ? (
-              <button
-                onClick={() => open()}
-                className="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition"
-              >
-                {address?.slice(0, 6)}...{address?.slice(-4)}
-              </button>
-            ) : (
-              <button
-                onClick={() => open()}
-                className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition"
-              >
-                Connect Wallet
-              </button>
+            {/* Browser wallet button — only show if NOT connected via Ledger */}
+            {!wallet.isLedgerConnected && (
+              wallet.isBrowserConnected ? (
+                <button
+                  onClick={() => open()}
+                  className="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition"
+                >
+                  {wallet.browserAddress?.slice(0, 6)}...{wallet.browserAddress?.slice(-4)}
+                </button>
+              ) : (
+                <button
+                  onClick={() => open()}
+                  className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition"
+                >
+                  Connect Wallet
+                </button>
+              )
             )}
           </div>
         </div>
       </header>
 
       <LedgerConnectModal
-        isOpen={ledger.isOpen}
-        onClose={ledger.close}
-        step={ledger.step}
-        error={ledger.error}
-        transport={ledger.transport}
-        onConnect={ledger.connect}
+        isOpen={ledgerModalOpen}
+        onClose={() => setLedgerModalOpen(false)}
+        step={ledgerStep}
+        error={ledgerError}
+        transport={ledgerTransport}
+        onConnect={handleLedgerConnect}
       />
     </>
   );

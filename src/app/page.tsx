@@ -1,19 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAppKitAccount } from "@reown/appkit/react";
-import { useWalletClient } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
 import { Providers } from "./providers";
 import { Header } from "@/components/Header";
 import { Feed } from "@/components/Feed";
 import { DepositPanel } from "@/components/DepositPanel";
 import { Portfolio } from "@/components/Portfolio";
 import { AgentDashboard } from "@/components/AgentDashboard";
+import { useWallet } from "@/lib/wallet-context";
 
 
 function AppContent() {
-  const { address, isConnected } = useAppKitAccount();
-  const { data: walletClient } = useWalletClient();
+  const { activeAddress: address, isConnected, walletType, walletClient, isLedgerConnected } = useWallet();
   const [tab, setTab] = useState<"feed" | "portfolio" | "agents">("feed");
   const [agentCount, setAgentCount] = useState(0);
   const [poolBalance, setPoolBalance] = useState("—");
@@ -122,7 +121,7 @@ function AppContent() {
                 poolBalance={isConnected ? poolBalance : "Connect wallet"}
                 onChainBalance={isConnected ? onChainBalance : "Connect wallet"}
                 onDeposit={async (amt) => {
-                  if (!isConnected || !walletClient) throw new Error("Connect wallet first");
+                  if (!isConnected || !address) throw new Error("Connect wallet first");
                   const amount = String(Math.floor(amt * 1e6));
 
                   // Step 1: Prepare on server
@@ -134,18 +133,25 @@ function AppContent() {
                   const prep = await prepRes.json();
                   if (!prep.txId) throw new Error(prep.error || "Prepare failed");
 
-                  // Step 2: Sign with MetaMask via Reown
+                  // Step 2: Sign — Ledger or browser wallet
                   let signature: string;
-                  try {
-                    signature = await walletClient.signTypedData({
-                      account: walletClient.account!,
-                      domain: prep.typedData.domain,
-                      types: prep.typedData.types,
-                      primaryType: prep.typedData.primaryType,
-                      message: prep.typedData.message,
-                    });
-                  } catch (signErr: any) {
-                    throw new Error("Signature rejected: " + (signErr.shortMessage || signErr.message));
+                  if (isLedgerConnected) {
+                    const { signTypedDataOnLedger } = await import("@/lib/ledger");
+                    signature = await signTypedDataOnLedger("44'/60'/0'/0/0", prep.typedData);
+                  } else if (walletClient) {
+                    try {
+                      signature = await walletClient.signTypedData({
+                        account: walletClient.account!,
+                        domain: prep.typedData.domain,
+                        types: prep.typedData.types,
+                        primaryType: prep.typedData.primaryType,
+                        message: prep.typedData.message,
+                      });
+                    } catch (signErr: any) {
+                      throw new Error("Signature rejected: " + (signErr.shortMessage || signErr.message));
+                    }
+                  } else {
+                    throw new Error("No wallet connected");
                   }
 
                   // Step 3: Submit signature to server
@@ -157,7 +163,6 @@ function AppContent() {
                   const submit = await submitRes.json();
                   if (!submit.success) throw new Error(submit.error || "Submit failed");
 
-                  // Wait for balance update
                   await new Promise((r) => setTimeout(r, 5000));
                   fetchBalances();
                 }}
