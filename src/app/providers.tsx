@@ -42,7 +42,12 @@ export function Providers({ children }: { children: ReactNode }) {
           dAppIdentifier: "whisper-pm",
           apiKey: "1e55ba3959f4543af24809d9066a2120bd2ac9246e626e26a1ff77eb109ca0e5",
           floatingButtonPosition: "bottom-right",
-          loggerLevel: "info",
+          loggerLevel: "debug",
+          devConfig: {
+            stub: {
+              dAppConfig: true,
+            },
+          },
         });
         console.log("[Ledger] Wallet Provider initialized (EIP-6963)");
       } catch (e) {
