@@ -18,14 +18,19 @@ import crypto from "crypto";
 // Real withdraw from Unlink privacy pool
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { amount, evmPrivateKey } = body;
+  const { amount, evmPrivateKey, evmAddress } = body;
 
-  if (!amount || !evmPrivateKey) {
-    return NextResponse.json({ error: "Missing amount or evmPrivateKey" }, { status: 400 });
+  if (!amount) {
+    return NextResponse.json({ error: "Missing amount" }, { status: 400 });
+  }
+
+  const pk = evmPrivateKey || process.env.DEMO_PK;
+  if (!pk) {
+    return NextResponse.json({ error: "No signing key available. Set DEMO_PK in env." }, { status: 400 });
   }
 
   try {
-    const account = privateKeyToAccount(evmPrivateKey as `0x${string}`);
+    const account = privateKeyToAccount(pk as `0x${string}`);
     const walletClient = createWalletClient({ account, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const publicClient = createPublicClient({ chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
 

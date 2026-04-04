@@ -85,7 +85,8 @@ export async function POST(req: NextRequest) {
     if (usesLedger) {
       log("ledger:verify", "done", undefined, `Signer: ${ledgerAddress}`);
     }
-    const account = privateKeyToAccount((evmPrivateKey || "0x0000000000000000000000000000000000000000000000000000000000000001") as `0x${string}`);
+    const pk = evmPrivateKey || process.env.DEMO_PK || "0x0000000000000000000000000000000000000000000000000000000000000001";
+    const account = privateKeyToAccount(pk as `0x${string}`);
     const basePub = createPublicClient({ chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const baseWallet = createWalletClient({ account, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const amoyPub = createPublicClient({ chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
