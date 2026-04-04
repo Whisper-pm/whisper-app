@@ -15,7 +15,7 @@ createAppKit({
   metadata: {
     name: "Whisper",
     description: "Private Prediction Markets",
-    url: "https://whisper.pm",
+    url: typeof window !== "undefined" ? window.location.origin : "https://whisper.pm",
     icons: ["/Whisper.svg"],
   },
   themeMode: "dark",

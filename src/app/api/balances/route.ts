@@ -37,31 +37,24 @@ export async function POST(req: NextRequest) {
       args: [address],
     });
 
-    // Unlink pool balance (derive from address)
-    const seed = crypto.createHash("sha512").update("whisper:" + address).digest();
-    const walletClient = createWalletClient({
-      account: privateKeyToAccount(evmPrivateKey ?? "0x0000000000000000000000000000000000000000000000000000000000000001" as `0x${string}`),
-      chain: baseSepolia,
-      transport: http(CONFIG.chains.baseSepolia.rpc),
-    });
-    const unlink = createUnlink({
-      engineUrl: CONFIG.unlink.engineUrl,
-      apiKey: CONFIG.unlink.apiKey,
-      account: unlinkAccount.fromSeed({ seed: new Uint8Array(seed) }),
-      evm: unlinkEvm.fromViem({ walletClient: walletClient as any, publicClient: publicClient as any }),
-    });
-
+    // Unlink pool balance — only if we can derive a seed
     let poolAmount = "0";
     try {
-      await unlink.ensureRegistered();
+      const seed = crypto.createHash("sha512").update("whisper:" + address).digest();
+      const dummyAccount = privateKeyToAccount("0x0000000000000000000000000000000000000000000000000000000000000001" as `0x${string}`);
+      const walletClient = createWalletClient({ account: dummyAccount, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
+      const unlink = createUnlink({
+        engineUrl: CONFIG.unlink.engineUrl,
+        apiKey: CONFIG.unlink.apiKey,
+        account: unlinkAccount.fromSeed({ seed: new Uint8Array(seed) }),
+        evm: unlinkEvm.fromViem({ walletClient: walletClient as any, publicClient: publicClient as any }),
+      });
       const balances = await unlink.getBalances();
       const usdcPool = ((balances as any).balances ?? []).find(
         (b: any) => b.token?.toLowerCase() === CONFIG.unlink.usdc.toLowerCase()
       );
       poolAmount = usdcPool ? formatUnits(BigInt(usdcPool.amount), 6) : "0";
-    } catch {
-      // Unlink not set up for this address yet
-    }
+    } catch {}
 
     // ETH
     const ethBal = await publicClient.getBalance({ address });
