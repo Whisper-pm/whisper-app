@@ -30,12 +30,8 @@ export async function POST(req: NextRequest) {
       await createUser(client, keys as any);
     } catch {}
 
-    // Get Permit2 nonce
-    let nonce = "0";
-    try {
-      const n = await getPermit2Nonce(publicClient as any, evmAddress as `0x${string}`);
-      nonce = n?.toString() ?? "0";
-    } catch {}
+    // Permit2 nonce — use timestamp-based to avoid collisions with previously used nonces
+    const nonce = String(Math.floor(Date.now() / 1000));
 
     // Prepare deposit on engine
     const prepareResp = await fetch(`${CONFIG.unlink.engineUrl}/transactions/deposit/prepare`, {
