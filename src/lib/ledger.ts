@@ -71,8 +71,8 @@ export async function initLedgerDMK(): Promise<DeviceManagementKit> {
   if (USE_SPECULOS) {
     // Connect to Speculos emulator via TCP (docker on localhost:40000)
     const { speculosTransportFactory } = await import("@ledgerhq/device-transport-kit-speculos");
-    builder.addTransport(speculosTransportFactory("http://localhost:40000"));
-    console.log("[Ledger] Using Speculos transport (localhost:40000)");
+    builder.addTransport(speculosTransportFactory("http://127.0.0.1:5001"));
+    console.log("[Ledger] Using Speculos transport (127.0.0.1:5001)");
   } else {
     builder.addTransport(webHidTransportFactory);
     builder.addTransport(webBleTransportFactory);
@@ -96,7 +96,7 @@ export async function connectLedger(method?: "usb" | "bluetooth"): Promise<Devic
   return new Promise((resolve, reject) => {
     let transport: string;
     if (USE_SPECULOS) {
-      transport = "SPECULOS";
+      transport = "SPECULOS_HTTP_TRANSPORT";
     } else if (method === "bluetooth") {
       transport = "WEB_BLE";
     } else {
