@@ -39,7 +39,7 @@ export function Providers({ children }: { children: ReactNode }) {
         const { initializeLedgerProvider } = await import("@ledgerhq/ledger-wallet-provider");
         cleanup = initializeLedgerProvider({
           target: document.body,
-          dAppIdentifier: "whisper-pm",
+          dAppIdentifier: "ledger",
           apiKey: "1e55ba3959f4543af24809d9066a2120bd2ac9246e626e26a1ff77eb109ca0e5",
           floatingButtonPosition: "bottom-right",
           loggerLevel: "debug",
