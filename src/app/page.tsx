@@ -134,12 +134,18 @@ function AppContent() {
                   if (!prep.txId) throw new Error(prep.error || "Prepare failed");
 
                   // Step 2: Sign with MetaMask via Reown
-                  const signature = await walletClient.signTypedData({
-                    domain: prep.typedData.domain,
-                    types: prep.typedData.types,
-                    primaryType: prep.typedData.primaryType,
-                    message: prep.typedData.message,
-                  });
+                  let signature: string;
+                  try {
+                    signature = await walletClient.signTypedData({
+                      account: walletClient.account!,
+                      domain: prep.typedData.domain,
+                      types: prep.typedData.types,
+                      primaryType: prep.typedData.primaryType,
+                      message: prep.typedData.message,
+                    });
+                  } catch (signErr: any) {
+                    throw new Error("Signature rejected: " + (signErr.shortMessage || signErr.message));
+                  }
 
                   // Step 3: Submit signature to server
                   const submitRes = await fetch("/api/deposit/submit", {
