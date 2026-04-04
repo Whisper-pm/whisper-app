@@ -213,17 +213,22 @@ export async function POST(req: NextRequest) {
     log("cctp:relay", "started");
     const relayerWallet = createWalletClient({ account, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
 
+    const amoyRelayGas = { maxFeePerGas: 2000000000n, maxPriorityFeePerGas: 1500000000n };
     const receiveTx = await relayerWallet.writeContract({
       address: MSG_TRANSMITTER, abi: mtAbi, functionName: "receiveMessage",
       args: [attestation.message as `0x${string}`, attestation.attestation as `0x${string}`],
+      ...amoyRelayGas,
     });
     await amoyPub.waitForTransactionReceipt({ hash: receiveTx });
     log("cctp:relay", "done", receiveTx);
 
-    // Fund burner with MATIC for Polymarket txs
+    // Fund burner with MATIC for Polymarket txs (0.001 MATIC = ~400 txs at 2 gwei)
+    const relayNonce = await amoyPub.getTransactionCount({ address: account.address });
     const gasTx = await relayerWallet.sendTransaction({
       to: burnerAddress,
-      value: 10000000000000000n, // 0.01 MATIC
+      value: 1000000000000000n, // 0.001 MATIC (enough for 3 txs at 2 gwei)
+      nonce: relayNonce,
+      ...amoyRelayGas,
     });
     await amoyPub.waitForTransactionReceipt({ hash: gasTx });
     log("gas:fund", "done", gasTx);
@@ -239,6 +244,8 @@ export async function POST(req: NextRequest) {
     // STEP 5: Bet on Polymarket (Amoy)
     // ============================================================
     const burnerAmoyWallet = createWalletClient({ account: burnerAccount, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
+    // Low gas overrides for Amoy testnet (base fee is 0, default priority is wasteful)
+    const amoyGas = { maxFeePerGas: 2000000000n, maxPriorityFeePerGas: 1500000000n }; // 2 gwei
 
     // Create condition on testnet
     log("polymarket:prepare", "started");
@@ -249,7 +256,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const prepareTx = await burnerAmoyWallet.writeContract({
-        address: CTF, abi: ctfAbi, functionName: "prepareCondition", args: [oracle, questionId, 2n],
+        address: CTF, abi: ctfAbi, functionName: "prepareCondition", args: [oracle, questionId, 2n], ...amoyGas,
       });
       await amoyPub.waitForTransactionReceipt({ hash: prepareTx });
       log("polymarket:prepare", "done", prepareTx);
@@ -259,10 +266,10 @@ export async function POST(req: NextRequest) {
 
     // Split position (bet)
     log("polymarket:split", "started");
-    const ctfApproveTx = await burnerAmoyWallet.writeContract({ address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, burnerAmoyBalance] });
+    const ctfApproveTx = await burnerAmoyWallet.writeContract({ address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, burnerAmoyBalance], ...amoyGas });
     await amoyPub.waitForTransactionReceipt({ hash: ctfApproveTx });
     const splitNonce = await amoyPub.getTransactionCount({ address: burnerAddress });
-    const splitTx = await burnerAmoyWallet.writeContract({ nonce: splitNonce,
+    const splitTx = await burnerAmoyWallet.writeContract({ nonce: splitNonce, ...amoyGas,
       address: CTF, abi: ctfAbi, functionName: "splitPosition",
       args: [USDC_AMOY, ZERO, testnetConditionId, [1n, 2n], burnerAmoyBalance],
     });
