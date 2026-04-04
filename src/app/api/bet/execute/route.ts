@@ -22,6 +22,14 @@ import { addBet } from "@/lib/store";
 import { addBurner, updateBurner } from "@/lib/wallet-store";
 import crypto from "crypto";
 
+// Permit2 nonce tracker — avoids desync bug in SDK
+const nonceTracker = new Map<string, number>();
+function getNextNonce(wallet: string): string {
+  const current = nonceTracker.get(wallet.toLowerCase()) ?? 3000;
+  nonceTracker.set(wallet.toLowerCase(), current + 1);
+  return String(current);
+}
+
 const USDC_BASE = CONFIG.unlink.usdc;
 const USDC_AMOY = CONFIG.cctp.usdcPolygonAmoy;
 const TOKEN_MESSENGER = CONFIG.cctp.tokenMessenger;
@@ -105,7 +113,8 @@ export async function POST(req: NextRequest) {
       const depositNeeded = amountBigint - poolAmount;
       log("unlink:deposit", "started", undefined, `Need ${formatUnits(depositNeeded, 6)} more USDC`);
       await unlink.ensureErc20Approval({ token: USDC_BASE, amount: String(depositNeeded) });
-      const dep = await unlink.deposit({ token: USDC_BASE, amount: String(depositNeeded) });
+      const nonce = getNextNonce(account.address);
+      const dep = await unlink.deposit({ token: USDC_BASE, amount: String(depositNeeded), nonce });
       await unlink.pollTransactionStatus(dep.txId, { intervalMs: 3000, timeoutMs: 120000 });
       log("unlink:deposit", "done", undefined, "txId: " + dep.txId);
       // Wait for balance to update

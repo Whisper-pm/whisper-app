@@ -15,6 +15,14 @@ import { baseSepolia } from "viem/chains";
 import { CONFIG } from "@/lib/config";
 import crypto from "crypto";
 
+// Permit2 nonce tracker — auto-increments to avoid desync bug in SDK
+const nonceTracker = new Map<string, number>();
+function getNextNonce(wallet: string): string {
+  const current = nonceTracker.get(wallet.toLowerCase()) ?? 2000;
+  nonceTracker.set(wallet.toLowerCase(), current + 1);
+  return String(current);
+}
+
 // Real deposit into Unlink privacy pool
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -46,7 +54,8 @@ export async function POST(req: NextRequest) {
     });
 
     // Deposit
-    const result = await unlink.deposit({ token: CONFIG.unlink.usdc, amount });
+    const nonce = getNextNonce(account.address);
+    const result = await unlink.deposit({ token: CONFIG.unlink.usdc, amount, nonce });
 
     // Wait for balance
     await new Promise((r) => setTimeout(r, 8000));
