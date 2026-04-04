@@ -18,6 +18,12 @@ import {
 import { createWhisperContextModule } from "./erc7730-context";
 import { findDescriptor, resolveDisplayFields } from "@/erc7730";
 
+// Set NEXT_PUBLIC_LEDGER_SPECULOS=true to use Speculos emulator instead of real device
+const USE_SPECULOS = typeof window !== "undefined" && (
+  process.env.NEXT_PUBLIC_LEDGER_SPECULOS === "true" ||
+  new URLSearchParams(window.location.search).has("speculos")
+);
+
 /** AI analysis fields embedded into EIP-712 typed data for Ledger Clear Signing */
 export interface LedgerAIAnalysis {
   /** AI confidence score 0-100 */
@@ -57,11 +63,21 @@ let signer: SignerEth | null = null;
 /**
  * Initialize the Ledger DMK (call once on app load).
  */
-export function initLedgerDMK(): DeviceManagementKit {
+export async function initLedgerDMK(): Promise<DeviceManagementKit> {
   if (dmk) return dmk;
-  dmk = new DeviceManagementKitBuilder()
-    .addTransport(webHidTransportFactory)
-    .build();
+  const builder = new DeviceManagementKitBuilder();
+
+  if (USE_SPECULOS) {
+    // Connect to Speculos emulator via TCP (docker on localhost:40000)
+    const { speculosTransportFactory } = await import("@ledgerhq/device-transport-kit-speculos");
+    builder.addTransport(speculosTransportFactory("http://localhost:40000"));
+    console.log("[Ledger] Using Speculos transport (localhost:40000)");
+  } else {
+    builder.addTransport(webHidTransportFactory);
+    console.log("[Ledger] Using WebHID transport");
+  }
+
+  dmk = builder.build();
   return dmk;
 }
 
@@ -71,10 +87,11 @@ export function initLedgerDMK(): DeviceManagementKit {
  * human-readable prediction market details during Clear Signing.
  */
 export async function connectLedger(): Promise<DeviceSessionId> {
-  const kit = initLedgerDMK();
+  const kit = await initLedgerDMK();
 
   return new Promise((resolve, reject) => {
-    const observable = kit.startDiscovering({ transport: "WEB_HID" });
+    const transport = USE_SPECULOS ? "SPECULOS" : "WEB_HID";
+    const observable = kit.startDiscovering({ transport } as any);
     const sub = observable.subscribe({
       next: async (device) => {
         try {

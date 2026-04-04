@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.82.0",
     "@ledgerhq/device-management-kit": "^1.2.0",
     "@ledgerhq/device-signer-kit-ethereum": "^1.13.0",
+    "@ledgerhq/device-transport-kit-speculos": "^1.2.0",
     "@ledgerhq/device-transport-kit-web-hid": "^1.2.3",
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-wagmi": "^1.8.19",
