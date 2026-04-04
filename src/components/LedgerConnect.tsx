@@ -36,8 +36,7 @@ export function useLedgerConnect() {
     setError(null);
 
     try {
-      await connectLedger(method);
-      const addr = await getLedgerAddress();
+      const addr = await connectLedger(method);
       setAddress(addr);
       setStep("connected");
       // Auto-close after success

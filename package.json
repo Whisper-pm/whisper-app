@@ -15,6 +15,8 @@
     "@ledgerhq/device-signer-kit-ethereum": "^1.13.0",
     "@ledgerhq/device-transport-kit-speculos": "^1.2.0",
     "@ledgerhq/device-transport-kit-web-hid": "^1.2.3",
+    "@ledgerhq/hw-app-eth": "^7.6.2",
+    "@ledgerhq/hw-transport-webhid": "^6.34.0",
     "@ledgerhq/ledger-wallet-provider": "^1.1.1",
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-wagmi": "^1.8.19",

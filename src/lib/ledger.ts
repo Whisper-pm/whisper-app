@@ -1,237 +1,109 @@
-// Ledger DMK integration — real hardware signing with ERC-7730 Clear Signing
-// Connects to Ledger via WebHID, signs typed data with prediction market
-// metadata displayed on the device screen.
-//
-// This is the first prediction market app with ERC-7730 Clear Signing metadata.
+// Ledger integration via LedgerJS (hw-transport-webhid + hw-app-eth)
+// Simple async/await approach — proven, battle-tested, works everywhere.
 
-import {
-  DeviceManagementKitBuilder,
-  ConsoleLogger,
-  type DeviceManagementKit,
-  type DeviceSessionId,
-} from "@ledgerhq/device-management-kit";
-import { webHidTransportFactory, webHidIdentifier } from "@ledgerhq/device-transport-kit-web-hid";
-import {
-  SignerEthBuilder,
-  type SignerEth,
-} from "@ledgerhq/device-signer-kit-ethereum";
-
-import { ContextModuleBuilder } from "@ledgerhq/context-module";
 import { findDescriptor, resolveDisplayFields } from "@/erc7730";
-
-// Set NEXT_PUBLIC_LEDGER_SPECULOS=true to use Speculos emulator instead of real device
-const USE_SPECULOS = typeof window !== "undefined" && (
-  process.env.NEXT_PUBLIC_LEDGER_SPECULOS === "true" ||
-  new URLSearchParams(window.location.search).has("speculos")
-);
 
 /** AI analysis fields embedded into EIP-712 typed data for Ledger Clear Signing */
 export interface LedgerAIAnalysis {
-  /** AI confidence score 0-100 */
   aiScore: number;
-  /** Risk assessment */
   riskLevel: "LOW" | "MEDIUM" | "HIGH";
-  /** Short thesis line (truncated to fit Ledger screen) */
   aiThesis: string;
-  /** Market liquidity in USD (raw number, not formatted) */
   liquidityUsd: number;
 }
 
-/**
- * Truncate and clean a thesis string for Ledger display.
- * Ledger screens have limited width (~40 chars per line).
- */
 export function formatThesisForLedger(thesis: string): string {
   if (!thesis) return "No analysis";
-  // Strip emojis, trim, and cap at 60 chars
   const clean = thesis.replace(/[\u{1F000}-\u{1FFFF}]/gu, "").trim();
   if (clean.length <= 60) return clean;
   return clean.slice(0, 57) + "...";
 }
 
-/**
- * Convert a raw liquidity number to USDC micro-units (6 decimals).
- * e.g. $50,000 -> "50000000000"
- */
 export function liquidityToMicroUsdc(liquidityUsd: number): string {
   return String(Math.floor(liquidityUsd * 1e6));
 }
 
-let dmk: DeviceManagementKit | null = null;
-let sessionId: DeviceSessionId | null = null;
-let signer: SignerEth | null = null;
+// ---- State ----
 
-/**
- * Initialize the Ledger DMK (call once on app load).
- */
-export async function initLedgerDMK(): Promise<DeviceManagementKit> {
-  if (dmk) return dmk;
-  const builder = new DeviceManagementKitBuilder()
-    .addLogger(new ConsoleLogger());
+let transport: any = null;
+let ethApp: any = null;
+let connectedAddress: string | null = null;
 
-  if (USE_SPECULOS) {
-    const { speculosTransportFactory } = await import("@ledgerhq/device-transport-kit-speculos");
-    builder.addTransport(speculosTransportFactory("http://127.0.0.1:5001"));
-    console.log("[Ledger] Using Speculos transport");
-  } else {
-    builder.addTransport(webHidTransportFactory);
-    // BLE added dynamically only if available
-    try {
-      const { webBleTransportFactory } = await import("@ledgerhq/device-transport-kit-web-ble");
-      builder.addTransport(webBleTransportFactory);
-      console.log("[Ledger] Using WebHID + WebBLE transports");
-    } catch {
-      console.log("[Ledger] Using WebHID transport only (WebBLE not available)");
-    }
+// ---- Connection ----
+
+export async function connectLedger(_method?: "usb" | "bluetooth"): Promise<string> {
+  // LedgerJS: simple WebHID — opens browser device picker popup
+  const TransportWebHID = (await import("@ledgerhq/hw-transport-webhid")).default;
+  const Eth = (await import("@ledgerhq/hw-app-eth")).default;
+
+  console.log("[Ledger] Opening WebHID transport...");
+  transport = await TransportWebHID.create();
+  console.log("[Ledger] Transport opened");
+
+  ethApp = new Eth(transport);
+  console.log("[Ledger] Ethereum app connected");
+
+  // Get address to verify connection
+  const { address } = await ethApp.getAddress("44'/60'/0'/0/0");
+  connectedAddress = `0x${address}`;
+  console.log("[Ledger] Address:", connectedAddress);
+
+  return connectedAddress;
+}
+
+export async function getLedgerAddress(derivationPath = "44'/60'/0'/0/0"): Promise<string> {
+  if (connectedAddress) return connectedAddress;
+  if (!ethApp) throw new Error("Ledger not connected");
+  const { address } = await ethApp.getAddress(derivationPath);
+  connectedAddress = `0x${address}`;
+  return connectedAddress;
+}
+
+export function isLedgerConnected(): boolean {
+  return !!ethApp;
+}
+
+export async function disconnectLedger(): Promise<void> {
+  if (transport) {
+    await transport.close();
+    transport = null;
+    ethApp = null;
+    connectedAddress = null;
   }
-
-  dmk = builder.build();
-  return dmk;
 }
 
-/**
- * Connect to a Ledger device.
- * Injects the Whisper ERC-7730 context module so the device displays
- * human-readable prediction market details during Clear Signing.
- *
- * @param method - "usb" (WebHID), "bluetooth" (WebBLE), or auto-detect
- */
-export async function connectLedger(method?: "usb" | "bluetooth"): Promise<DeviceSessionId> {
-  const kit = await initLedgerDMK();
+// ---- EIP-712 Signing ----
 
-  return new Promise((resolve, reject) => {
-    // Let DMK auto-discover across all registered transports
-    // For USB: triggers browser's WebHID device picker popup
-    // For BLE: triggers browser's Bluetooth device picker popup
-    const discoverArgs: { transport?: string } = {};
-    if (USE_SPECULOS) {
-      discoverArgs.transport = "SPECULOS_HTTP_TRANSPORT";
-    }
-    // Don't specify transport for real devices — let DMK try all
-    console.log("[Ledger] Starting discovery...", discoverArgs);
-    const observable = kit.startDiscovering(discoverArgs as any);
-
-    // Timeout after 30s
-    const timeout = setTimeout(() => {
-      sub.unsubscribe();
-      reject(new Error("Connection timeout — make sure your Ledger is unlocked with the Ethereum app open"));
-    }, 30000);
-
-    const sub = observable.subscribe({
-      next: async (device) => {
-        clearTimeout(timeout);
-        console.log("[Ledger] Device found:", device.id, device.deviceModel?.name);
-        try {
-          const session = await kit.connect({ device });
-          sessionId = session;
-
-          // Build signer with our custom ERC-7730 context module
-          // This makes the Ledger display prediction market data
-          // instead of raw hex during signing
-          const ORIGIN_TOKEN = "1e55ba3959f4543af24809d9066a2120bd2ac9246e626e26a1ff77eb109ca0e5";
-
-          // Build context module with originToken + test mode
-          // Test mode accepts descriptors signed with test PKI keys (from our CAL backend)
-          // Production mode would require descriptors signed by Ledger's root key
-          const contextModule = new ContextModuleBuilder({ originToken: ORIGIN_TOKEN })
-            .setCalConfig({
-              url: "https://crypto-assets-service.api.ledger.com/v1",
-              mode: USE_SPECULOS ? "test" : "prod",
-              branch: "main",
-            })
-            .build();
-
-          signer = new SignerEthBuilder({ dmk: kit, sessionId: session, originToken: ORIGIN_TOKEN })
-            .withContextModule(contextModule)
-            .build();
-
-          sub.unsubscribe();
-          resolve(session);
-        } catch (e) {
-          clearTimeout(timeout);
-          console.error("[Ledger] Connect error:", e);
-          reject(e instanceof Error ? e : new Error(String(e)));
-        }
-      },
-      error: (err) => {
-        clearTimeout(timeout);
-        console.error("[Ledger] Discovery error:", err);
-        const msg = err?.message || err?._tag || (typeof err === "string" ? err : "Connection failed");
-        reject(new Error(msg));
-      },
-      complete: () => {
-        clearTimeout(timeout);
-        console.log("[Ledger] Discovery completed without finding device");
-        reject(new Error("No Ledger device found — make sure it's unlocked with Ethereum app open"));
-      },
-    });
-  });
-}
-
-/**
- * Get the Ethereum address from the connected Ledger.
- */
-export async function getLedgerAddress(
-  derivationPath = "44'/60'/0'/0/0"
-): Promise<string> {
-  if (!signer) throw new Error("Ledger not connected");
-
-  return new Promise((resolve, reject) => {
-    const { observable } = signer!.getAddress(derivationPath, {
-      checkOnDevice: false,
-    });
-    observable.subscribe({
-      next: (result: any) => {
-        if (result.status === "success") {
-          resolve(result.output.address);
-        }
-      },
-      error: reject,
-    });
-  });
-}
-
-/**
- * Sign EIP-712 typed data on the Ledger.
- * The ERC-7730 context module automatically resolves Clear Signing metadata
- * from our local descriptors, displaying human-readable fields on the device.
- */
 export async function signTypedDataOnLedger(
   derivationPath: string,
   typedData: any
 ): Promise<string> {
-  if (!signer) throw new Error("Ledger not connected");
+  if (!ethApp) throw new Error("Ledger not connected");
 
-  return new Promise((resolve, reject) => {
-    const { observable } = signer!.signTypedData(derivationPath, typedData);
-    observable.subscribe({
-      next: (result: any) => {
-        if (result.status === "success") {
-          const { r, s, v } = result.output;
-          const sig = `0x${r}${s}${v.toString(16).padStart(2, "0")}`;
-          resolve(sig);
-        }
-      },
-      error: reject,
-    });
+  // hw-app-eth signEIP712Message expects the full typed data object
+  const { domain, types, primaryType, message } = typedData;
+
+  const sig = await ethApp.signEIP712Message(derivationPath, {
+    domain,
+    types: { EIP712Domain: getDomainType(domain), ...types },
+    primaryType,
+    message,
   });
+
+  return `0x${sig.r}${sig.s}${sig.v.toString(16).padStart(2, "0")}`;
 }
 
-/**
- * Build EIP-712 typed data for a Whisper private bet.
- * Matches the WhisperBet schema in whisper-bet.json ERC-7730 descriptor.
- *
- * The Ledger will display:
- *   Action: AI-Analyzed Prediction Bet
- *   Market: [question text]
- *   Position: YES/NO
- *   Amount: X.XX USDC
- *   AI Score: XX/100
- *   Risk: LOW/MEDIUM/HIGH Risk
- *   AI Thesis: [analysis]
- *   Liquidity: X.XX USDC
- *   Time: [human-readable date]
- */
+function getDomainType(domain: Record<string, unknown>) {
+  const fields: Array<{ name: string; type: string }> = [];
+  if ("name" in domain) fields.push({ name: "name", type: "string" });
+  if ("version" in domain) fields.push({ name: "version", type: "string" });
+  if ("chainId" in domain) fields.push({ name: "chainId", type: "uint256" });
+  if ("verifyingContract" in domain) fields.push({ name: "verifyingContract", type: "address" });
+  if ("salt" in domain) fields.push({ name: "salt", type: "bytes32" });
+  return fields;
+}
+
+// ---- Typed Data Builders ----
+
 export function buildBetTypedData(params: {
   conditionId: string;
   side: "YES" | "NO";
@@ -246,7 +118,7 @@ export function buildBetTypedData(params: {
     domain: {
       name: "Whisper Private Bet",
       version: "1",
-      chainId: 84532, // Base Sepolia
+      chainId: 84532,
     },
     types: {
       WhisperBet: [
@@ -276,20 +148,6 @@ export function buildBetTypedData(params: {
   };
 }
 
-/**
- * Build EIP-712 typed data for a Polymarket CTF Exchange order.
- * Matches the Order schema in polymarket-ctf-exchange.json descriptor.
- *
- * The Ledger will display:
- *   Action: Place Prediction Market Trade
- *   Trade Side: BUY/SELL
- *   Outcome Token ID: [tokenId]
- *   You Pay: X.XX USDC
- *   You Receive: [shares]
- *   From Address: 0xAB...CD
- *   Expires At: [date]
- *   Fee Rate: [bps]
- */
 export function buildCTFOrderTypedData(params: {
   salt: string;
   maker: string;
@@ -301,7 +159,7 @@ export function buildCTFOrderTypedData(params: {
   expiration: string;
   nonce: string;
   feeRateBps: string;
-  side: 0 | 1; // 0=BUY, 1=SELL
+  side: 0 | 1;
   signatureType: 0 | 1 | 2;
 }) {
   return {
@@ -332,10 +190,6 @@ export function buildCTFOrderTypedData(params: {
   };
 }
 
-/**
- * Build EIP-712 typed data for a Polymarket Neg Risk Exchange order.
- * Same Order structure but different verifying contract.
- */
 export function buildNegRiskOrderTypedData(params: {
   salt: string;
   maker: string;
@@ -378,18 +232,6 @@ export function buildNegRiskOrderTypedData(params: {
   };
 }
 
-/**
- * Build EIP-712 typed data for Permit2 (Unlink deposit approval).
- * Matches the PermitSingle schema in permit2-usdc.json descriptor.
- *
- * The Ledger will display:
- *   Action: Approve Token for Unlink Deposit
- *   Token: 0x03...7e
- *   Approved Amount: X.XX USDC
- *   Spender: 0x64...82 (Unlink Pool)
- *   Approval Expires: [date]
- *   Signature Deadline: [date]
- */
 export function buildPermit2TypedData(params: {
   token: string;
   amount: string;
@@ -431,11 +273,6 @@ export function buildPermit2TypedData(params: {
   };
 }
 
-/**
- * Sign a bet with full ERC-7730 Clear Signing on the Ledger.
- * The device screen shows human-readable prediction market details
- * including AI analysis data.
- */
 export async function signBetWithLedger(params: {
   market: string;
   conditionId: string;
@@ -468,10 +305,6 @@ export async function signBetWithLedger(params: {
   };
 }
 
-/**
- * Preview what the Ledger will display for given typed data.
- * Returns the resolved Clear Signing fields without needing a device.
- */
 export function previewLedgerDisplay(typedData: {
   domain?: { name?: string; verifyingContract?: string };
   primaryType?: string;
@@ -484,22 +317,4 @@ export function previewLedgerDisplay(typedData: {
     typedData.primaryType,
     typedData.message
   );
-}
-
-/**
- * Check if Ledger is connected.
- */
-export function isLedgerConnected(): boolean {
-  return !!signer;
-}
-
-/**
- * Disconnect Ledger.
- */
-export async function disconnectLedger() {
-  if (dmk && sessionId) {
-    await dmk.disconnect({ sessionId });
-    sessionId = null;
-    signer = null;
-  }
 }
