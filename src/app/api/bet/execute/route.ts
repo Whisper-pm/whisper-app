@@ -22,20 +22,15 @@ import { addBet } from "@/lib/store";
 import { addBurner, updateBurner } from "@/lib/wallet-store";
 import crypto from "crypto";
 
-// Permit2 nonce tracker — avoids desync bug in SDK
-const nonceTracker = new Map<string, number>();
-function getNextNonce(wallet: string): string {
-  const current = nonceTracker.get(wallet.toLowerCase()) ?? 3000;
-  nonceTracker.set(wallet.toLowerCase(), current + 1);
-  return String(current);
-}
-
 const USDC_BASE = CONFIG.unlink.usdc;
 const USDC_AMOY = CONFIG.cctp.usdcPolygonAmoy;
 const TOKEN_MESSENGER = CONFIG.cctp.tokenMessenger;
 const MSG_TRANSMITTER = CONFIG.cctp.messageTransmitter;
 const CTF = CONFIG.polymarket.amoy.ctf;
 const ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
+
+// Gas tank — only private key needed server-side (for MATIC on Polygon)
+const GAS_TANK_PK = process.env.GAS_TANK_PK || process.env.DEMO_PK;
 
 const erc20Abi = [
   { name: "approve", type: "function" as const, stateMutability: "nonpayable" as const, inputs: [{ name: "s", type: "address" as const }, { name: "a", type: "uint256" as const }], outputs: [{ type: "bool" as const }] },
@@ -53,28 +48,32 @@ const amoyChain = { id: 80002, name: "Amoy" as const, nativeCurrency: { name: "M
 /**
  * PIPELINE: Place a private bet on Polymarket
  *
- * Step 1 (Base): Deposit USDC into Unlink pool (if needed)
- * Step 2 (Base): Withdraw from pool to fresh burner wallet
- * Step 3 (Base→Polygon): Burner bridges USDC via CCTP V2
- * Step 4 (Polygon): Gas tank relays receiveMessage + funds burner with MATIC
- * Step 5 (Polygon): Burner bets on Polymarket CTF (prepareCondition + splitPosition)
+ * Prerequisite: User already deposited USDC into Unlink pool (frontend, signed by Ledger/wallet)
+ *
+ * Step 1: Withdraw from Unlink pool → fresh burner wallet (SDK handles this, no private key needed)
+ * Step 2: Burner bridges USDC via CCTP V2 (Base → Polygon)
+ * Step 3: Gas tank relays receiveMessage + funds burner with MATIC (only key on backend)
+ * Step 4: Burner bets on Polymarket CTF
  *
  * Privacy: each bet = new burner = no link between bets.
- * The Unlink ZK pool breaks the connection between user and burner.
- *
- * NOTE: Atomic execute() was tested and works (approve TokenMessenger + depositForBurn
- * + reshield 1 wei), but requires keeping a note in the pool. We use the step-by-step
- * burner approach for reliability. See README.md for atomic details.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { conditionId, side, amount, evmPrivateKey, ledgerSignature, ledgerAddress, userAddress, marketQuestion, odds } = body;
+  const { conditionId, side, amount, userAddress, ledgerAddress, ledgerSignature, marketQuestion, odds } = body;
 
   if (!conditionId || !side || !amount) {
     return NextResponse.json({ error: "Missing conditionId, side, or amount" }, { status: 400 });
   }
 
-  const usesLedger = !!ledgerSignature && !!ledgerAddress;
+  if (!GAS_TANK_PK) {
+    return NextResponse.json({ error: "GAS_TANK_PK not configured" }, { status: 500 });
+  }
+
+  // Who is placing the bet? Ledger address > wallet address
+  const betOwner = ledgerAddress || userAddress;
+  if (!betOwner) {
+    return NextResponse.json({ error: "No user address provided" }, { status: 400 });
+  }
 
   const steps: Array<{ step: string; status: string; txHash?: string; detail?: string }> = [];
   const log = (step: string, status: string, txHash?: string, detail?: string) => {
@@ -82,66 +81,40 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    // Determine which address to use for the pipeline
-    // Priority: Ledger address > evmPrivateKey > DEMO_PK
-    let account;
-    let userAddr: string;
-
-    if (usesLedger && ledgerAddress) {
-      // Ledger flow: user signed on hardware wallet, use their address for Unlink
-      // Backend uses DEMO_PK as relayer for on-chain txs, but Unlink seed is from Ledger address
-      const relayerPk = process.env.DEMO_PK || evmPrivateKey;
-      if (!relayerPk || relayerPk === "0x0") {
-        return NextResponse.json({ error: "Backend relayer key not configured (set DEMO_PK)" }, { status: 500 });
-      }
-      account = privateKeyToAccount(relayerPk as `0x${string}`);
-      userAddr = ledgerAddress;
-      log("ledger:verify", "done", undefined, `Ledger signer: ${ledgerAddress}, Relayer: ${account.address}`);
-    } else {
-      const pk = evmPrivateKey || process.env.DEMO_PK || "0x0000000000000000000000000000000000000000000000000000000000000001";
-      account = privateKeyToAccount(pk as `0x${string}`);
-      userAddr = account.address;
+    if (ledgerSignature) {
+      log("ledger", "verified", undefined, `Signed by: ${ledgerAddress}`);
     }
 
     const basePub = createPublicClient({ chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
-    const baseWallet = createWalletClient({ account, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const amoyPub = createPublicClient({ chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
     const amountBigint = BigInt(amount);
 
-    // Setup Unlink — seed from user's address (Ledger or wallet)
-    const seed = crypto.createHash("sha512").update("whisper:bet:" + userAddr).digest();
+    // Gas tank account — only used for MATIC relay on Polygon
+    const gasTank = privateKeyToAccount(GAS_TANK_PK as `0x${string}`);
+    const gasTankWallet = createWalletClient({ account: gasTank, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
+
+    // Setup Unlink — seed derived from bet owner's address
+    const seed = crypto.createHash("sha512").update("whisper:bet:" + betOwner).digest();
     const unlinkAcc = unlinkAccount.fromSeed({ seed: new Uint8Array(seed) });
+
+    // Unlink SDK needs an EVM interface for read operations only
+    // The actual signing (deposit/approve) was done by the user on frontend
     const unlink = createUnlink({
       engineUrl: CONFIG.unlink.engineUrl,
       apiKey: CONFIG.unlink.apiKey,
       account: unlinkAcc,
-      evm: unlinkEvm.fromViem({ walletClient: baseWallet as any, publicClient: basePub as any }),
+      evm: unlinkEvm.fromViem({
+        walletClient: createWalletClient({ account: gasTank, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) }) as any,
+        publicClient: basePub as any,
+      }),
     });
     await unlink.ensureRegistered();
     const unlinkAddr = await unlink.getAddress();
+    log("unlink", "ready", undefined, `Pool address: ${unlinkAddr}`);
 
     // ============================================================
-    // STEP 1: Ensure pool has enough USDC
-    // ============================================================
-    const { balances } = await unlink.getBalances();
-    const poolAmount = BigInt(balances.find((b: any) => b.token?.toLowerCase() === USDC_BASE.toLowerCase())?.amount ?? "0");
-
-    if (poolAmount < amountBigint) {
-      const needed = amountBigint - poolAmount;
-      log("deposit", "started", undefined, `Need ${formatUnits(needed, 6)} more USDC`);
-      await unlink.ensureErc20Approval({ token: USDC_BASE, amount: String(needed) });
-      const nonce = getNextNonce(account.address);
-      const dep = await unlink.deposit({ token: USDC_BASE, amount: String(needed), nonce });
-      await unlink.pollTransactionStatus(dep.txId, { intervalMs: 2000, timeoutMs: 120000 });
-      log("deposit", "done", undefined, dep.txId);
-      await new Promise((r) => setTimeout(r, 5000));
-    } else {
-      log("deposit", "skip", undefined, `Pool has ${formatUnits(poolAmount, 6)} USDC`);
-    }
-
-    // ============================================================
-    // STEP 2: Create burner + fund from pool (USDC + gas ETH)
-    // The Unlink relayer automatically sends gas ETH to the burner.
+    // STEP 1: Withdraw from pool → fresh burner
+    // Unlink SDK handles the ZK proof + relayer transfer
     // ============================================================
     log("burner", "started");
     const burner = await BurnerWallet.create();
@@ -163,7 +136,7 @@ export async function POST(req: NextRequest) {
     addBurner({
       burnerAddress,
       createdAt: new Date().toISOString(),
-      parentEvmAddress: account.address,
+      parentEvmAddress: betOwner,
       unlinkAddress: unlinkAddr,
       market: marketQuestion,
       side,
@@ -172,7 +145,7 @@ export async function POST(req: NextRequest) {
       txHashes: { fundFromPool: fundResult.txId },
     });
 
-    // Wait for USDC + gas ETH on-chain
+    // Wait for USDC + gas ETH to arrive on burner
     log("burner", "waiting");
     let burnerUsdc = 0n;
     for (let i = 0; i < 20; i++) {
@@ -186,16 +159,14 @@ export async function POST(req: NextRequest) {
     }
 
     // ============================================================
-    // STEP 3: CCTP Bridge Base → Polygon
+    // STEP 2: CCTP Bridge Base → Polygon (burner signs)
     // ============================================================
     log("cctp:bridge", "started");
     const burnerBaseWallet = createWalletClient({ account: burnerAccount, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
 
-    // Approve TokenMessenger for CCTP
     const approveTx = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [TOKEN_MESSENGER, burnerUsdc] });
     await basePub.waitForTransactionReceipt({ hash: approveTx });
 
-    // Burn (get fresh nonce to avoid stale nonce after approve)
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
     const burnNonce = await basePub.getTransactionCount({ address: burnerAddress });
     const burnTx = await burnerBaseWallet.writeContract({
@@ -229,14 +200,12 @@ export async function POST(req: NextRequest) {
     log("cctp:attestation", "done");
 
     // ============================================================
-    // STEP 4: Relay receiveMessage + fund burner MATIC on Amoy
-    // Backend wallet relays the CCTP message and funds gas.
+    // STEP 3: Gas tank relays receiveMessage + funds burner MATIC
+    // This is the ONLY step that uses a backend private key
     // ============================================================
     log("cctp:relay", "started");
-    const relayerWallet = createWalletClient({ account, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
-
     const amoyRelayGas = { maxFeePerGas: 80000000000n, maxPriorityFeePerGas: 30000000000n };
-    const receiveTx = await relayerWallet.writeContract({
+    const receiveTx = await gasTankWallet.writeContract({
       address: MSG_TRANSMITTER, abi: mtAbi, functionName: "receiveMessage",
       args: [attestation.message as `0x${string}`, attestation.attestation as `0x${string}`],
       ...amoyRelayGas,
@@ -244,11 +213,11 @@ export async function POST(req: NextRequest) {
     await amoyPub.waitForTransactionReceipt({ hash: receiveTx });
     log("cctp:relay", "done", receiveTx);
 
-    // Fund burner with MATIC for Polymarket txs (0.001 MATIC = ~400 txs at 2 gwei)
-    const relayNonce = await amoyPub.getTransactionCount({ address: account.address });
-    const gasTx = await relayerWallet.sendTransaction({
+    // Fund burner with MATIC for Polymarket txs
+    const relayNonce = await amoyPub.getTransactionCount({ address: gasTank.address });
+    const gasTx = await gasTankWallet.sendTransaction({
       to: burnerAddress,
-      value: 1000000000000000n, // 0.001 MATIC (enough for 3 txs at 2 gwei)
+      value: 1000000000000000n, // 0.001 MATIC
       nonce: relayNonce,
       ...amoyRelayGas,
     });
@@ -263,13 +232,11 @@ export async function POST(req: NextRequest) {
     log("balance", "done", undefined, `${formatUnits(burnerAmoyBalance, 6)} USDC on Amoy`);
 
     // ============================================================
-    // STEP 5: Bet on Polymarket (Amoy)
+    // STEP 4: Bet on Polymarket (burner signs on Amoy)
     // ============================================================
     const burnerAmoyWallet = createWalletClient({ account: burnerAccount, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
-    // Low gas overrides for Amoy testnet (base fee is 0, default priority is wasteful)
-    const amoyGas = { maxFeePerGas: 80000000000n, maxPriorityFeePerGas: 30000000000n }; // 2 gwei
+    const amoyGas = { maxFeePerGas: 80000000000n, maxPriorityFeePerGas: 30000000000n };
 
-    // Create condition on testnet
     log("polymarket:prepare", "started");
     const questionText = marketQuestion || conditionId;
     const questionId = keccak256(encodePacked(["string"], [questionText]));
@@ -286,7 +253,6 @@ export async function POST(req: NextRequest) {
       log("polymarket:prepare", "exists");
     }
 
-    // Split position (bet)
     log("polymarket:split", "started");
     const ctfApproveTx = await burnerAmoyWallet.writeContract({ address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, burnerAmoyBalance], ...amoyGas });
     await amoyPub.waitForTransactionReceipt({ hash: ctfApproveTx });
@@ -302,7 +268,6 @@ export async function POST(req: NextRequest) {
     // Persist bet
     const amountUsdc = parseFloat(formatUnits(amountBigint, 6));
     let savedBet = null;
-    const betOwner = userAddress || (usesLedger ? ledgerAddress : null);
     if (betOwner) {
       savedBet = addBet(betOwner, {
         market: marketQuestion || `Market ${conditionId.substring(0, 10)}...`,
