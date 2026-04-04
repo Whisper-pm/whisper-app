@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserPortfolio } from "@/lib/store";
 
-// Get user's portfolio (bets, P&L, balances)
+// Get user's portfolio (bets, P&L)
 // Keyed by World ID nullifier (anonymous identity)
 export async function GET(req: NextRequest) {
   const nullifier = req.nextUrl.searchParams.get("nullifier");
@@ -9,13 +10,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing nullifier parameter" }, { status: 400 });
   }
 
-  // In production: query database by nullifier
-  // For demo: return empty portfolio
+  const portfolio = getUserPortfolio(nullifier);
+
   return NextResponse.json({
-    nullifier,
-    bets: [],
-    totalPnl: 0,
-    poolBalance: "0",
-    onChainBalance: "0",
+    nullifier: portfolio.nullifier,
+    bets: portfolio.bets,
+    totalPnl: portfolio.totalPnl,
   });
 }

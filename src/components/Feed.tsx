@@ -7,10 +7,11 @@ import { BetModal } from "./BetModal";
 import { SearchFilter } from "./SearchFilter";
 
 interface FeedProps {
+  nullifier?: string | null;
   onBetPlaced?: (market: string, side: "YES" | "NO", amount: number) => void;
 }
 
-export function Feed({ onBetPlaced }: FeedProps = {}) {
+export function Feed({ nullifier, onBetPlaced }: FeedProps = {}) {
   const [markets, setMarkets] = useState<ScoredMarket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +106,7 @@ export function Feed({ onBetPlaced }: FeedProps = {}) {
         <BetModal
           market={betTarget.market}
           side={betTarget.side}
+          nullifier={nullifier}
           onClose={() => setBetTarget(null)}
           onConfirm={(amount) => {
             onBetPlaced?.(betTarget.market.raw.question, betTarget.side, amount);

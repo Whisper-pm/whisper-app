@@ -7,6 +7,7 @@ import { WorldIdGate } from "@/components/WorldIdGate";
 import { Feed } from "@/components/Feed";
 import { DepositPanel } from "@/components/DepositPanel";
 import { Portfolio } from "@/components/Portfolio";
+import { AgentDashboard } from "@/components/AgentDashboard";
 
 // For hackathon demo: private key is passed to server APIs
 // In production: user signs in browser, backend uses session
@@ -14,10 +15,27 @@ const DEMO_PK = "0x47b0a088fc62101d8aefc501edec2266ff2fc4cf84c93a8e6c315dedb0d94
 
 export default function Home() {
   const [nullifier, setNullifier] = useState<string | null>(null);
-  const [tab, setTab] = useState<"feed" | "portfolio">("feed");
+  const [tab, setTab] = useState<"feed" | "portfolio" | "agents">("feed");
+  const [agentCount, setAgentCount] = useState(0);
   const [poolBalance, setPoolBalance] = useState("...");
   const [onChainBalance, setOnChainBalance] = useState("...");
   const [bets, setBets] = useState<Array<{ id: string; market: string; side: "YES" | "NO"; amount: number; odds: string; status: "active" | "won" | "lost" | "pending"; pnl?: number }>>([]);
+  const [totalPnl, setTotalPnl] = useState(0);
+
+  // Fetch portfolio from the in-memory store
+  const fetchPortfolio = useCallback(async () => {
+    if (!nullifier) return;
+    try {
+      const res = await fetch(`/api/portfolio?nullifier=${encodeURIComponent(nullifier)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.bets && data.bets.length > 0) {
+          setBets(data.bets);
+          setTotalPnl(data.totalPnl ?? 0);
+        }
+      }
+    } catch {}
+  }, [nullifier]);
 
   // Fetch real balances from backend
   const fetchBalances = useCallback(async () => {
@@ -35,14 +53,34 @@ export default function Home() {
     } catch {}
   }, []);
 
-  // Load balances when verified
+  // Fetch agent count for tab badge
+  const fetchAgentCount = useCallback(async () => {
+    if (!nullifier) return;
+    try {
+      const res = await fetch(`/api/agents/my?nullifier=${encodeURIComponent(nullifier)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgentCount(data.agents?.filter((a: { status: string }) => a.status !== "revoked").length ?? 0);
+      }
+    } catch {}
+  }, [nullifier]);
+
+  // Load balances + portfolio + agent count when verified
   useEffect(() => {
     if (nullifier) {
       fetchBalances();
-      const interval = setInterval(fetchBalances, 15000);
-      return () => clearInterval(interval);
+      fetchPortfolio();
+      fetchAgentCount();
+      const balanceInterval = setInterval(fetchBalances, 15000);
+      const portfolioInterval = setInterval(fetchPortfolio, 10000);
+      const agentInterval = setInterval(fetchAgentCount, 15000);
+      return () => {
+        clearInterval(balanceInterval);
+        clearInterval(portfolioInterval);
+        clearInterval(agentInterval);
+      };
     }
-  }, [nullifier, fetchBalances]);
+  }, [nullifier, fetchBalances, fetchPortfolio, fetchAgentCount]);
 
   return (
     <Providers>
@@ -78,6 +116,12 @@ export default function Home() {
                     className={`text-sm px-4 py-1.5 rounded-lg ${tab === "portfolio" ? "bg-white text-black font-semibold" : "bg-gray-900 text-gray-400 hover:text-white"}`}
                   >
                     Portfolio ({bets.length})
+                  </button>
+                  <button
+                    onClick={() => setTab("agents")}
+                    className={`text-sm px-4 py-1.5 rounded-lg ${tab === "agents" ? "bg-white text-black font-semibold" : "bg-gray-900 text-gray-400 hover:text-white"}`}
+                  >
+                    Agents ({agentCount})
                   </button>
                 </div>
               </div>
@@ -116,7 +160,8 @@ export default function Home() {
             </div>
 
             {tab === "feed" ? (
-              <Feed onBetPlaced={(market, side, amount) => {
+              <Feed nullifier={nullifier} onBetPlaced={(market, side, amount) => {
+                // Optimistic local update for instant UI feedback
                 setBets((prev) => [
                   ...prev,
                   {
@@ -128,10 +173,14 @@ export default function Home() {
                     status: "active" as const,
                   },
                 ]);
+                // Then sync with server store
+                fetchPortfolio();
                 fetchBalances();
               }} />
+            ) : tab === "portfolio" ? (
+              <Portfolio bets={bets} totalPnl={totalPnl} />
             ) : (
-              <Portfolio bets={bets} totalPnl={bets.reduce((acc, b) => acc + (b.pnl ?? 0), 0)} />
+              <AgentDashboard nullifier={nullifier} />
             )}
           </>
         )}
