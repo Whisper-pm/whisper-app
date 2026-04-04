@@ -1,5 +1,10 @@
-// Whisper — In-memory store for demo
-// Persists across requests via Node.js module scope (server-side singleton)
+// Whisper — Bet store with JSON file persistence
+// Persists to data/bets.json for durability across restarts
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
+
+const STORE_PATH = join(process.cwd(), "data", "bets.json");
 
 export interface Bet {
   id: string;
@@ -29,8 +34,38 @@ export interface MarketSentiment {
   yesPercent: number;
 }
 
-// Global store: nullifier -> portfolio data
-const store = new Map<string, { bets: Bet[] }>();
+// ---------- JSON Persistence ----------
+
+interface StoreData {
+  [nullifier: string]: { bets: Bet[] };
+}
+
+function loadStore(): Map<string, { bets: Bet[] }> {
+  if (!existsSync(STORE_PATH)) return new Map();
+  try {
+    const raw: StoreData = JSON.parse(readFileSync(STORE_PATH, "utf-8"));
+    const map = new Map<string, { bets: Bet[] }>();
+    for (const [key, value] of Object.entries(raw)) {
+      map.set(key, value);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function saveStore() {
+  const dir = join(process.cwd(), "data");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const obj: StoreData = {};
+  for (const [key, value] of store.entries()) {
+    obj[key] = value;
+  }
+  writeFileSync(STORE_PATH, JSON.stringify(obj, null, 2));
+}
+
+// Global store: nullifier -> portfolio data (loaded from disk)
+const store = loadStore();
 
 function ensureUser(nullifier: string) {
   if (!store.has(nullifier)) {
@@ -47,6 +82,7 @@ export function addBet(nullifier: string, bet: Omit<Bet, "id" | "createdAt">): B
     createdAt: Date.now(),
   };
   user.bets.push(fullBet);
+  saveStore();
   return fullBet;
 }
 
@@ -65,6 +101,7 @@ export function updateBetStatus(
   if (!bet) return null;
   bet.status = status;
   if (pnl !== undefined) bet.pnl = pnl;
+  saveStore();
   return bet;
 }
 

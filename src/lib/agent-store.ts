@@ -1,6 +1,11 @@
-// Whisper — Agent Registration Store
-// In-memory store for AI agent registrations (demo/hackathon)
+// Whisper — Agent Registration Store with JSON file persistence
+// Persists to data/agents.json for durability across restarts
 // Each agent is traceable back to a verified human via World ID nullifier
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
+
+const STORE_PATH = join(process.cwd(), "data", "agents.json");
 
 export interface AgentLimits {
   maxBetSize: number;       // max USDC per bet
@@ -32,12 +37,54 @@ export interface AgentRegistration {
 
 const MAX_AGENTS_PER_HUMAN = 5;
 
-// ---------- Store ----------
+// ---------- JSON Persistence ----------
 
-const agentStore = new Map<string, AgentRegistration>();
+interface PersistedData {
+  agents: Record<string, AgentRegistration>;
+  nullifierIndex: Record<string, string[]>;
+}
 
-// Index: nullifier -> agentIds (for quick lookup)
-const nullifierIndex = new Map<string, Set<string>>();
+function loadFromDisk(): { agentStore: Map<string, AgentRegistration>; nullifierIndex: Map<string, Set<string>> } {
+  if (!existsSync(STORE_PATH)) {
+    return { agentStore: new Map(), nullifierIndex: new Map() };
+  }
+  try {
+    const raw: PersistedData = JSON.parse(readFileSync(STORE_PATH, "utf-8"));
+    const agents = new Map<string, AgentRegistration>();
+    for (const [key, value] of Object.entries(raw.agents || {})) {
+      agents.set(key, value);
+    }
+    const index = new Map<string, Set<string>>();
+    for (const [key, value] of Object.entries(raw.nullifierIndex || {})) {
+      index.set(key, new Set(value));
+    }
+    return { agentStore: agents, nullifierIndex: index };
+  } catch {
+    return { agentStore: new Map(), nullifierIndex: new Map() };
+  }
+}
+
+function saveToDisk() {
+  const dir = join(process.cwd(), "data");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const data: PersistedData = {
+    agents: {},
+    nullifierIndex: {},
+  };
+  for (const [key, value] of agentStore.entries()) {
+    data.agents[key] = value;
+  }
+  for (const [key, value] of nullifierIndex.entries()) {
+    data.nullifierIndex[key] = Array.from(value);
+  }
+  writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
+}
+
+// ---------- Store (loaded from disk) ----------
+
+const loaded = loadFromDisk();
+const agentStore = loaded.agentStore;
+const nullifierIndex = loaded.nullifierIndex;
 
 // ---------- Helpers ----------
 
@@ -129,6 +176,7 @@ export function registerAgent(params: {
   }
   nullifierIndex.get(humanNullifier)!.add(agent.agentId);
 
+  saveToDisk();
   return { success: true, agent };
 }
 
@@ -167,6 +215,7 @@ export function revokeAgent(
   }
 
   agent.status = "revoked";
+  saveToDisk();
   return { success: true };
 }
 
@@ -194,6 +243,8 @@ export function updateAgentStats(
     const newWins = previousWins + (update.won ? 1 : 0);
     agent.stats.winRate = totalDecided > 0 ? Math.round((newWins / totalDecided) * 100) : 0;
   }
+
+  saveToDisk();
 }
 
 /**

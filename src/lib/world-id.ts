@@ -1,4 +1,4 @@
-// World ID integration: verification, incognito actions, session management
+// World ID integration: verification and session management
 
 import { CONFIG } from "./config";
 
@@ -19,22 +19,6 @@ export async function verifyWorldId(proof: any): Promise<VerificationResult> {
     body: JSON.stringify(proof),
   });
   return res.json();
-}
-
-/**
- * Create an incognito action for repeated verifications.
- * Allows the same user to verify multiple times (one per bet).
- * Each verification produces a different nullifier (bets are unlinkable).
- */
-export async function createIncognitoAction(actionId: string, maxVerifications = 100) {
-  // In production: call World API to create incognito action
-  // POST https://developer.worldcoin.org/api/v2/create-action/{appId}
-  // { action: actionId, max_verifications: maxVerifications }
-  return {
-    actionId,
-    maxVerifications,
-    created: true,
-  };
 }
 
 /**
