@@ -1,6 +1,7 @@
 "use client";
 
-import { useIDKitRequest, orbLegacy } from "@worldcoin/idkit";
+import { IDKitRequestWidget, orbLegacy } from "@worldcoin/idkit";
+import type { IDKitResult } from "@worldcoin/idkit";
 import { CONFIG } from "@/lib/config";
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 
@@ -9,39 +10,13 @@ interface Props {
   onVerified?: (nullifierHash: string) => void;
 }
 
-// This component only renders AFTER rp_context is loaded
-function WorldIdButton({ rpContext, onProof }: { rpContext: any; onProof: (p: any) => void }) {
-  const { open, result, errorCode } = useIDKitRequest({
-    app_id: CONFIG.worldId.appId as `app_${string}`,
-    action: CONFIG.worldId.action,
-    preset: orbLegacy(),
-    rp_context: rpContext,
-    allow_legacy_proofs: true,
-  });
-
-  useEffect(() => {
-    if (result) onProof(result);
-  }, [result, onProof]);
-
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <button
-        onClick={() => open()}
-        className="bg-white text-black font-semibold px-10 py-3.5 rounded-full hover:bg-gray-100 transition shadow-lg cursor-pointer"
-      >
-        Verify with World ID
-      </button>
-      {errorCode && <p className="text-xs text-red-400">Error: {String(errorCode)}</p>}
-    </div>
-  );
-}
-
 export function WorldIdGate({ children, onVerified }: Props) {
   const [verified, setVerified] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rpContext, setRpContext] = useState<any>(null);
   const [contextLoading, setContextLoading] = useState(true);
+  const [widgetOpen, setWidgetOpen] = useState(false);
 
   // Fetch signed rp_context from backend
   useEffect(() => {
@@ -58,15 +33,15 @@ export function WorldIdGate({ children, onVerified }: Props) {
       .finally(() => setContextLoading(false));
   }, []);
 
-  const handleProof = useCallback(async (proof: any) => {
-    if (loading || verified) return;
-    setLoading(true);
+  const handleSuccess = useCallback(async (result: IDKitResult) => {
+    if (verifying || verified) return;
+    setVerifying(true);
     setError(null);
     try {
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(proof),
+        body: JSON.stringify(result),
       });
       const data = await res.json();
       if (data.success) {
@@ -78,9 +53,9 @@ export function WorldIdGate({ children, onVerified }: Props) {
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
-  }, [loading, verified, onVerified]);
+  }, [verifying, verified, onVerified]);
 
   if (verified) return <>{children}</>;
 
@@ -101,19 +76,49 @@ export function WorldIdGate({ children, onVerified }: Props) {
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 items-center">
+      <div className="flex flex-col gap-3 items-center" suppressHydrationWarning>
         {contextLoading ? (
           <button disabled className="bg-gray-700 text-gray-400 font-semibold px-10 py-3.5 rounded-full opacity-50">
             Loading World ID...
           </button>
         ) : rpContext ? (
-          <WorldIdButton rpContext={rpContext} onProof={handleProof} />
+          <>
+            <button
+              onClick={() => setWidgetOpen(true)}
+              className="bg-white text-black font-semibold px-10 py-3.5 rounded-full hover:bg-gray-100 transition shadow-lg cursor-pointer"
+            >
+              Verify with World ID
+            </button>
+            <IDKitRequestWidget
+              app_id={CONFIG.worldId.appId as `app_${string}`}
+              action={CONFIG.worldId.action}
+              preset={orbLegacy()}
+              rp_context={rpContext}
+              allow_legacy_proofs={true}
+              open={widgetOpen}
+              onOpenChange={setWidgetOpen}
+              onSuccess={handleSuccess}
+              onError={(code) => setError(String(code))}
+              autoClose
+            />
+          </>
         ) : (
           <p className="text-xs text-red-400">World ID config error</p>
         )}
 
-        {loading && <p className="text-xs text-yellow-400 animate-pulse">Verifying proof...</p>}
+        {verifying && <p className="text-xs text-yellow-400 animate-pulse">Verifying proof...</p>}
         <p className="text-xs text-green-600">World ID 4.0</p>
+
+        {/* DEV ONLY: skip World ID */}
+        <button
+          onClick={() => {
+            setVerified(true);
+            onVerified?.("dev-nullifier-" + Date.now());
+          }}
+          className="text-xs text-gray-600 underline hover:text-gray-400 cursor-pointer mt-2"
+        >
+          [Dev] Skip verification
+        </button>
       </div>
 
       {error && <p className="text-xs text-red-400 max-w-sm text-center">{error}</p>}
