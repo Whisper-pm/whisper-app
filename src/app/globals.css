@@ -24,3 +24,16 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Force Ledger modal above everything */
+ledger-button-toplevel,
+ledger-core-modal,
+[class*="ledger"] {
+  z-index: 99999 !important;
+}
+
+/* Also target shadow DOM host elements */
+:host(ledger-button-toplevel),
+:host(ledger-core-modal) {
+  z-index: 99999 !important;
+}
