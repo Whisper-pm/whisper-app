@@ -123,40 +123,41 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
     if (!amt || amt <= 0) return;
 
     try {
-      // 1. Ledger signing with AI analysis in EIP-712 typed data
-      // The Ledger screen shows: Market, Side, Amount, AI Score, Risk, AI Thesis, Liquidity
-      setStep("ledger");
-      const { signBetWithLedger, formatThesisForLedger, liquidityToMicroUsdc } = await import("@/lib/ledger");
-
-      // Extract AI fields for Ledger Clear Signing display
-      const aiScore = analysis.score ?? 50;
-      const riskLevel = analysis.risk ?? "MEDIUM";
-      const aiThesis = formatThesisForLedger(
-        analysis.thesis ?? `${analysis.recommendation}. Odds ${analysis.odds}, EV ${analysis.ev}`
-      );
-      // Parse liquidity string (e.g. "$50K" -> 50000, "$1.2M" -> 1200000)
-      const liqRaw = analysis.liquidity ?? "$0";
-      const liqNum = parseLiquidityString(liqRaw);
-
-      const ledgerResult = await signBetWithLedger({
-        market: raw.question,
-        conditionId: raw.conditionId,
-        side,
-        amount: String(Math.floor(amt * 1e6)), // USDC has 6 decimals
-        aiScore: Math.min(100, Math.max(0, Math.round(aiScore))),
-        riskLevel,
-        aiThesis,
-        liquidityUsd: liquidityToMicroUsdc(liqNum),
-      }).catch(() => {
-        // Ledger not connected: will fail in production, ok for demo without device
-        return null;
-      });
-
-      // Get signer address if Ledger is connected
+      // Detect if wallet is Ledger (connected via Reown/WalletConnect)
+      // When connected via Ledger Live, the ERC-7730 descriptors make the
+      // Ledger device display AI analysis (score, risk, thesis) during signing.
+      // For non-Ledger wallets, we skip the Ledger step entirely.
+      let ledgerSignature: string | undefined;
       let ledgerAddress: string | undefined;
-      if (ledgerResult) {
-        const { getLedgerAddress } = await import("@/lib/ledger");
+
+      // Try Ledger signing — if wallet is Ledger, the device shows Clear Signing
+      // If not Ledger (MetaMask, Rabby), this silently skips
+      try {
+        setStep("ledger");
+        const { signBetWithLedger, formatThesisForLedger, liquidityToMicroUsdc, getLedgerAddress } = await import("@/lib/ledger");
+
+        const aiScore = analysis.score ?? 50;
+        const riskLevel = analysis.risk ?? "MEDIUM";
+        const aiThesis = formatThesisForLedger(
+          analysis.thesis ?? `${analysis.recommendation}. Odds ${analysis.odds}, EV ${analysis.ev}`
+        );
+        const liqNum = parseLiquidityString(analysis.liquidity ?? "$0");
+
+        const ledgerResult = await signBetWithLedger({
+          market: raw.question,
+          conditionId: raw.conditionId,
+          side,
+          amount: String(Math.floor(amt * 1e6)),
+          aiScore: Math.min(100, Math.max(0, Math.round(aiScore))),
+          riskLevel,
+          aiThesis,
+          liquidityUsd: liquidityToMicroUsdc(liqNum),
+        });
+
+        ledgerSignature = ledgerResult?.signature;
         ledgerAddress = await getLedgerAddress().catch(() => undefined);
+      } catch {
+        // No Ledger connected — that's fine, continue with normal wallet
       }
 
       // 2-4. Execute full pipeline via backend API
@@ -169,8 +170,7 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
           conditionId: raw.conditionId,
           side,
           amount: String(Math.floor(amt * 1e6)),
-          evmPrivateKey: "0x0",
-          ledgerSignature: ledgerResult?.signature,
+          ledgerSignature,
           ledgerAddress,
           userAddress: userAddress || undefined,
           marketQuestion: raw.question,
