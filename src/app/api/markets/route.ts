@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Fetch raw markets from Polymarket
     const res = await fetch(
-      "https://gamma-api.polymarket.com/markets?limit=200&active=true&closed=false",
+      "https://gamma-api.polymarket.com/markets?limit=21&active=true&closed=false",
       { next: { revalidate: 60 } }
     );
     if (!res.ok) throw new Error(`Polymarket API error: ${res.status}`);

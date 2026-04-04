@@ -108,7 +108,7 @@ export async function fetchCuratedFeed(limit = 20): Promise<ScoredMarket[]> {
     }));
   }
 
-  const res = await fetch(`https://gamma-api.polymarket.com/markets?limit=200&active=true&closed=false`);
+  const res = await fetch(`https://gamma-api.polymarket.com/markets?limit=21&active=true&closed=false`);
   if (!res.ok) throw new Error("Failed to fetch markets");
   const raw: PolymarketData[] = await res.json();
 
