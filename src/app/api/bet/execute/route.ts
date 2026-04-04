@@ -82,18 +82,34 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    if (usesLedger) {
-      log("ledger:verify", "done", undefined, `Signer: ${ledgerAddress}`);
+    // Determine which address to use for the pipeline
+    // Priority: Ledger address > evmPrivateKey > DEMO_PK
+    let account;
+    let userAddr: string;
+
+    if (usesLedger && ledgerAddress) {
+      // Ledger flow: user signed on hardware wallet, use their address for Unlink
+      // Backend uses DEMO_PK as relayer for on-chain txs, but Unlink seed is from Ledger address
+      const relayerPk = process.env.DEMO_PK || evmPrivateKey;
+      if (!relayerPk || relayerPk === "0x0") {
+        return NextResponse.json({ error: "Backend relayer key not configured (set DEMO_PK)" }, { status: 500 });
+      }
+      account = privateKeyToAccount(relayerPk as `0x${string}`);
+      userAddr = ledgerAddress;
+      log("ledger:verify", "done", undefined, `Ledger signer: ${ledgerAddress}, Relayer: ${account.address}`);
+    } else {
+      const pk = evmPrivateKey || process.env.DEMO_PK || "0x0000000000000000000000000000000000000000000000000000000000000001";
+      account = privateKeyToAccount(pk as `0x${string}`);
+      userAddr = account.address;
     }
-    const pk = evmPrivateKey || process.env.DEMO_PK || "0x0000000000000000000000000000000000000000000000000000000000000001";
-    const account = privateKeyToAccount(pk as `0x${string}`);
+
     const basePub = createPublicClient({ chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const baseWallet = createWalletClient({ account, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
     const amoyPub = createPublicClient({ chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
     const amountBigint = BigInt(amount);
 
-    // Setup Unlink
-    const seed = crypto.createHash("sha512").update("whisper:bet:" + account.address).digest();
+    // Setup Unlink — seed from user's address (Ledger or wallet)
+    const seed = crypto.createHash("sha512").update("whisper:bet:" + userAddr).digest();
     const unlinkAcc = unlinkAccount.fromSeed({ seed: new Uint8Array(seed) });
     const unlink = createUnlink({
       engineUrl: CONFIG.unlink.engineUrl,
@@ -286,8 +302,9 @@ export async function POST(req: NextRequest) {
     // Persist bet
     const amountUsdc = parseFloat(formatUnits(amountBigint, 6));
     let savedBet = null;
-    if (userAddress) {
-      savedBet = addBet(userAddress, {
+    const betOwner = userAddress || (usesLedger ? ledgerAddress : null);
+    if (betOwner) {
+      savedBet = addBet(betOwner, {
         market: marketQuestion || `Market ${conditionId.substring(0, 10)}...`,
         conditionId: testnetConditionId,
         side: side as "YES" | "NO",
