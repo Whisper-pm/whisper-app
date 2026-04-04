@@ -6,11 +6,11 @@
 
 import {
   DeviceManagementKitBuilder,
+  ConsoleLogger,
   type DeviceManagementKit,
   type DeviceSessionId,
 } from "@ledgerhq/device-management-kit";
-import { webHidTransportFactory } from "@ledgerhq/device-transport-kit-web-hid";
-import { webBleTransportFactory } from "@ledgerhq/device-transport-kit-web-ble";
+import { webHidTransportFactory, webHidIdentifier } from "@ledgerhq/device-transport-kit-web-hid";
 import {
   SignerEthBuilder,
   type SignerEth,
@@ -66,17 +66,23 @@ let signer: SignerEth | null = null;
  */
 export async function initLedgerDMK(): Promise<DeviceManagementKit> {
   if (dmk) return dmk;
-  const builder = new DeviceManagementKitBuilder();
+  const builder = new DeviceManagementKitBuilder()
+    .addLogger(new ConsoleLogger());
 
   if (USE_SPECULOS) {
-    // Connect to Speculos emulator via TCP (docker on localhost:40000)
     const { speculosTransportFactory } = await import("@ledgerhq/device-transport-kit-speculos");
     builder.addTransport(speculosTransportFactory("http://127.0.0.1:5001"));
-    console.log("[Ledger] Using Speculos transport (127.0.0.1:5001)");
+    console.log("[Ledger] Using Speculos transport");
   } else {
     builder.addTransport(webHidTransportFactory);
-    builder.addTransport(webBleTransportFactory);
-    console.log("[Ledger] Using WebHID + WebBLE transports");
+    // BLE added dynamically only if available
+    try {
+      const { webBleTransportFactory } = await import("@ledgerhq/device-transport-kit-web-ble");
+      builder.addTransport(webBleTransportFactory);
+      console.log("[Ledger] Using WebHID + WebBLE transports");
+    } catch {
+      console.log("[Ledger] Using WebHID transport only (WebBLE not available)");
+    }
   }
 
   dmk = builder.build();
@@ -94,17 +100,27 @@ export async function connectLedger(method?: "usb" | "bluetooth"): Promise<Devic
   const kit = await initLedgerDMK();
 
   return new Promise((resolve, reject) => {
-    let transport: string;
+    // Let DMK auto-discover across all registered transports
+    // For USB: triggers browser's WebHID device picker popup
+    // For BLE: triggers browser's Bluetooth device picker popup
+    const discoverArgs: { transport?: string } = {};
     if (USE_SPECULOS) {
-      transport = "SPECULOS_HTTP_TRANSPORT";
-    } else if (method === "bluetooth") {
-      transport = "WEB-BLE-RN-STYLE";
-    } else {
-      transport = "WEB-HID";
+      discoverArgs.transport = "SPECULOS_HTTP_TRANSPORT";
     }
-    const observable = kit.startDiscovering({ transport } as any);
+    // Don't specify transport for real devices — let DMK try all
+    console.log("[Ledger] Starting discovery...", discoverArgs);
+    const observable = kit.startDiscovering(discoverArgs as any);
+
+    // Timeout after 30s
+    const timeout = setTimeout(() => {
+      sub.unsubscribe();
+      reject(new Error("Connection timeout — make sure your Ledger is unlocked with the Ethereum app open"));
+    }, 30000);
+
     const sub = observable.subscribe({
       next: async (device) => {
+        clearTimeout(timeout);
+        console.log("[Ledger] Device found:", device.id, device.deviceModel?.name);
         try {
           const session = await kit.connect({ device });
           sessionId = session;
@@ -132,10 +148,22 @@ export async function connectLedger(method?: "usb" | "bluetooth"): Promise<Devic
           sub.unsubscribe();
           resolve(session);
         } catch (e) {
-          reject(e);
+          clearTimeout(timeout);
+          console.error("[Ledger] Connect error:", e);
+          reject(e instanceof Error ? e : new Error(String(e)));
         }
       },
-      error: reject,
+      error: (err) => {
+        clearTimeout(timeout);
+        console.error("[Ledger] Discovery error:", err);
+        const msg = err?.message || err?._tag || (typeof err === "string" ? err : "Connection failed");
+        reject(new Error(msg));
+      },
+      complete: () => {
+        clearTimeout(timeout);
+        console.log("[Ledger] Discovery completed without finding device");
+        reject(new Error("No Ledger device found — make sure it's unlocked with Ethereum app open"));
+      },
     });
   });
 }
