@@ -23,6 +23,18 @@ function getNextNonce(wallet: string): string {
   return String(current);
 }
 
+// Resolve wallet address → private key from WALLET_KEYS env
+// Format: WALLET_KEYS=address1:pk1,address2:pk2
+function resolveWalletKey(address?: string): string | null {
+  if (!address) return null;
+  const keys = process.env.WALLET_KEYS ?? "";
+  for (const pair of keys.split(",")) {
+    const [addr, pk] = pair.split(":");
+    if (addr?.toLowerCase() === address.toLowerCase()) return pk;
+  }
+  return null;
+}
+
 // Real deposit into Unlink privacy pool
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -32,10 +44,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing amount" }, { status: 400 });
   }
 
-  // Use provided private key, or fall back to env var for demo
-  const pk = evmPrivateKey || process.env.DEMO_PK;
+  // Resolve private key: explicit PK > wallet mapping from env
+  const pk = evmPrivateKey || resolveWalletKey(evmAddress);
   if (!pk) {
-    return NextResponse.json({ error: "No signing key available. Set DEMO_PK in env." }, { status: 400 });
+    return NextResponse.json({ error: "Wallet not registered for backend signing. Add WALLET_KEYS in env." }, { status: 400 });
   }
 
   try {

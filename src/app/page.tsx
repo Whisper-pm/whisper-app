@@ -126,12 +126,8 @@ function AppContent() {
                     body: JSON.stringify({ amount: String(Math.floor(amt * 1e6)), evmAddress: address }),
                   });
                   const data = await res.json();
-                  if (data.success) {
-                    setPoolBalance(data.poolBalance);
-                    setOnChainBalance(data.walletBalance);
-                  } else {
-                    throw new Error(data.error);
-                  }
+                  if (!data.success) throw new Error(data.error);
+                  fetchBalances();
                 }}
                 onWithdraw={async (amt) => {
                   if (!isConnected) throw new Error("Connect wallet first");
@@ -141,12 +137,8 @@ function AppContent() {
                     body: JSON.stringify({ amount: String(Math.floor(amt * 1e6)), evmAddress: address }),
                   });
                   const data = await res.json();
-                  if (data.success) {
-                    setPoolBalance(data.poolBalance);
-                    setOnChainBalance(data.walletBalance);
-                  } else {
-                    throw new Error(data.error);
-                  }
+                  if (!data.success) throw new Error(data.error);
+                  fetchBalances();
                 }}
               />
             </div>

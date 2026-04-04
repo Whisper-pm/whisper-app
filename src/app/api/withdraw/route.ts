@@ -15,6 +15,16 @@ import { baseSepolia } from "viem/chains";
 import { CONFIG } from "@/lib/config";
 import crypto from "crypto";
 
+function resolveWalletKey(address?: string): string | null {
+  if (!address) return null;
+  const keys = process.env.WALLET_KEYS ?? "";
+  for (const pair of keys.split(",")) {
+    const [addr, pk] = pair.split(":");
+    if (addr?.toLowerCase() === address.toLowerCase()) return pk;
+  }
+  return null;
+}
+
 // Real withdraw from Unlink privacy pool
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -24,9 +34,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing amount" }, { status: 400 });
   }
 
-  const pk = evmPrivateKey || process.env.DEMO_PK;
+  const pk = evmPrivateKey || resolveWalletKey(evmAddress);
   if (!pk) {
-    return NextResponse.json({ error: "No signing key available. Set DEMO_PK in env." }, { status: 400 });
+    return NextResponse.json({ error: "Wallet not registered for backend signing." }, { status: 400 });
   }
 
   try {
