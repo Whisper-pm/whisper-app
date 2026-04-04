@@ -3,3 +3,4 @@ node_modules/
 .env
 dist/
 .agent-usage.json
+.venv/
