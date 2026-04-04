@@ -18,10 +18,11 @@ export function LedgerConnect() {
       module.initializeLedgerProvider({
         target: document.body,
         floatingButtonPosition: "bottom-right",
-        dAppIdentifier: "whisper",
+        dAppIdentifier: "ledger",
         apiKey: "1e55ba3959f4543af24809d9066a2120bd2ac9246e626e26a1ff77eb109ca0e5",
         loggerLevel: "info",
         environment: "production",
+        walletTransactionFeatures: ["send", "receive", "swap", "buy", "earn", "sell"],
       });
 
       setInitialized(true);
