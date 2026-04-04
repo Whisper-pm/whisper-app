@@ -98,9 +98,9 @@ export async function connectLedger(method?: "usb" | "bluetooth"): Promise<Devic
     if (USE_SPECULOS) {
       transport = "SPECULOS_HTTP_TRANSPORT";
     } else if (method === "bluetooth") {
-      transport = "WEB_BLE";
+      transport = "WEB-BLE-RN-STYLE";
     } else {
-      transport = "WEB_HID";
+      transport = "WEB-HID";
     }
     const observable = kit.startDiscovering({ transport } as any);
     const sub = observable.subscribe({
