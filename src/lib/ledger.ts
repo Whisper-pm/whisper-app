@@ -51,7 +51,7 @@ export async function connectLedger(_method?: "usb" | "bluetooth"): Promise<stri
 
   // Get address to verify connection
   const { address } = await ethApp.getAddress("44'/60'/0'/0/0");
-  connectedAddress = `0x${address}`;
+  connectedAddress = address.startsWith("0x") ? address : `0x${address}`;
   console.log("[Ledger] Address:", connectedAddress);
 
   return connectedAddress;
@@ -61,7 +61,7 @@ export async function getLedgerAddress(derivationPath = "44'/60'/0'/0/0"): Promi
   if (connectedAddress) return connectedAddress;
   if (!ethApp) throw new Error("Ledger not connected");
   const { address } = await ethApp.getAddress(derivationPath);
-  connectedAddress = `0x${address}`;
+  connectedAddress = address.startsWith("0x") ? address : `0x${address}`;
   return connectedAddress;
 }
 
