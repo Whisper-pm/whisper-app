@@ -277,7 +277,7 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
               disabled={!amount || parseFloat(amount) <= 0}
               className="w-full bg-white text-black font-semibold py-3.5 rounded-xl hover:bg-gray-100 transition disabled:opacity-20 shadow-lg"
             >
-              Sign with Ledger & Place Bet
+              Place Bet
             </button>
             <div className="flex items-center gap-2 mt-3 justify-center">
               <div className="flex -space-x-1">
