@@ -72,6 +72,15 @@ export function Header() {
                 ? `${wallet.ledgerAddress.slice(0, 6)}...${wallet.ledgerAddress.slice(-4)}`
                 : "Ledger"}
             </button>
+            {wallet.isLedgerConnected && (
+              <button
+                onClick={() => wallet.disconnectLedger()}
+                className="text-xs text-gray-500 hover:text-red-400 transition px-2 py-1"
+                title="Disconnect Ledger"
+              >
+                ✕
+              </button>
+            )}
 
             {/* Browser wallet button — only show if NOT connected via Ledger */}
             {!wallet.isLedgerConnected && (
