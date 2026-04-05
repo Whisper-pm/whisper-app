@@ -222,7 +222,7 @@ export async function POST(req: NextRequest) {
     const relayNonce = await amoyPub.getTransactionCount({ address: gasTank.address });
     const gasTx = await gasTankWallet.sendTransaction({
       to: burnerAddress,
-      value: 1000000000000000n, // 0.001 MATIC
+      value: 10000000000000000n, // 0.01 MATIC
       nonce: relayNonce,
       ...amoyRelayGas,
     });
