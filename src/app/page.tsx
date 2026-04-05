@@ -131,6 +131,31 @@ function AppContent() {
                   if (!isConnected || !address) throw new Error("Connect wallet first");
                   const amount = String(Math.floor(amt * 1e6));
 
+                  // Step 0: Ensure USDC is approved to Permit2
+                  const approveRes = await fetch("/api/deposit/approve", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ evmAddress: address }),
+                  });
+                  const approveData = await approveRes.json();
+                  if (approveData.status === "needs_approval") {
+                    // User needs to approve USDC → Permit2 on-chain
+                    if (isLedgerConnected) {
+                      // Sign approve tx with Ledger
+                      const { sendLedgerTransaction } = await import("@/lib/ledger");
+                      await sendLedgerTransaction(approveData.txData);
+                    } else if (walletClient) {
+                      await walletClient.sendTransaction({
+                        account: walletClient.account!,
+                        to: approveData.txData.to as `0x${string}`,
+                        data: approveData.txData.data as `0x${string}`,
+                      });
+                    }
+                    // Wait for approval to confirm
+                    await new Promise((r) => setTimeout(r, 5000));
+                    console.log("[Deposit] Permit2 approval sent");
+                  }
+
                   // Step 1: Prepare on server
                   const prepRes = await fetch("/api/deposit/prepare", {
                     method: "POST",

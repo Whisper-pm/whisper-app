@@ -78,6 +78,61 @@ export async function disconnectLedger(): Promise<void> {
   }
 }
 
+// ---- Transaction Signing ----
+
+export async function sendLedgerTransaction(txData: { to: string; data: string; value?: string }): Promise<string> {
+  if (!ethApp || !connectedAddress) throw new Error("Ledger not connected");
+
+  const { createPublicClient, http, serializeTransaction, parseTransaction, keccak256 } = await import("viem");
+  const { baseSepolia } = await import("viem/chains");
+
+  const pub = createPublicClient({ chain: baseSepolia, transport: http("https://sepolia.base.org") });
+
+  const nonce = await pub.getTransactionCount({ address: connectedAddress as `0x${string}` });
+  const gasPrice = await pub.getGasPrice();
+
+  const tx = {
+    to: txData.to as `0x${string}`,
+    data: txData.data as `0x${string}`,
+    value: BigInt(txData.value || "0"),
+    nonce,
+    gasLimit: 100000n,
+    maxFeePerGas: gasPrice * 2n,
+    maxPriorityFeePerGas: gasPrice / 2n,
+    chainId: 84532,
+    type: 2 as const,
+  };
+
+  // Serialize unsigned tx for Ledger signing
+  const serializedUnsigned = serializeTransaction(tx);
+
+  // Sign on Ledger
+  const sig = await ethApp.signTransaction(
+    "44'/60'/0'/0/0",
+    serializedUnsigned.slice(2), // remove 0x prefix
+    null
+  );
+
+  // Serialize with signature
+  const signedTx = serializeTransaction(tx, {
+    r: `0x${sig.r}` as `0x${string}`,
+    s: `0x${sig.s}` as `0x${string}`,
+    v: BigInt("0x" + sig.v),
+  });
+
+  // Broadcast
+  const hash = await pub.request({
+    method: "eth_sendRawTransaction",
+    params: [signedTx],
+  } as any);
+
+  console.log("[Ledger] Transaction sent:", hash);
+
+  // Wait for receipt
+  await pub.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+  return hash as string;
+}
+
 // ---- EIP-712 Signing ----
 
 export async function signTypedDataOnLedger(
