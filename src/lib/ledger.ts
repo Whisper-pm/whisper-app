@@ -96,11 +96,9 @@ export async function sendLedgerTransaction(txData: { to: string; data: string; 
     data: txData.data as `0x${string}`,
     value: BigInt(txData.value || "0"),
     nonce,
-    gasLimit: 100000n,
-    maxFeePerGas: gasPrice * 2n,
-    maxPriorityFeePerGas: gasPrice / 2n,
+    gas: 100000n,
+    gasPrice: gasPrice * 2n,
     chainId: 84532,
-    type: 2 as const,
   };
 
   // Serialize unsigned tx for Ledger signing
