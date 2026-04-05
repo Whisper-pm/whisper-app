@@ -164,11 +164,14 @@ export async function POST(req: NextRequest) {
     log("cctp:bridge", "started");
     const burnerBaseWallet = createWalletClient({ account: burnerAccount, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
 
-    // Approve USDC to TokenMinter (CCTP V2: TokenMessenger delegates burn to TokenMinter which does transferFrom)
-    const approveNonce = await basePub.getTransactionCount({ address: burnerAddress });
-    const approveTx = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [CONFIG.cctp.tokenMinter, burnerUsdc], nonce: approveNonce });
-    await basePub.waitForTransactionReceipt({ hash: approveTx });
-    log("cctp:approve", "done", approveTx);
+    // Approve USDC to both TokenMessenger AND TokenMinter (CCTP V2 needs both)
+    const approveNonce1 = await basePub.getTransactionCount({ address: burnerAddress });
+    const approveTx1 = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [TOKEN_MESSENGER, burnerUsdc], nonce: approveNonce1 });
+    await basePub.waitForTransactionReceipt({ hash: approveTx1 });
+    const approveNonce2 = await basePub.getTransactionCount({ address: burnerAddress });
+    const approveTx2 = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [CONFIG.cctp.tokenMinter, burnerUsdc], nonce: approveNonce2 });
+    await basePub.waitForTransactionReceipt({ hash: approveTx2 });
+    log("cctp:approve", "done", approveTx1);
 
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
     const burnNonce = await basePub.getTransactionCount({ address: burnerAddress });
