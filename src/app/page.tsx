@@ -12,9 +12,28 @@ import { AgentDashboard } from "@/components/AgentDashboard";
 
 
 function AppContent() {
-  const { address, isConnected } = useAppKitAccount();
+  const { address: browserAddress, isConnected: isBrowserConnected } = useAppKitAccount();
   const { data: walletClient } = useWalletClient();
-  const isLedgerConnected = false; // TODO: wire back later
+
+  // Check Ledger connection status (from the module, not a context)
+  const [ledgerAddr, setLedgerAddr] = useState<string | null>(null);
+  useEffect(() => {
+    const check = async () => {
+      const { isLedgerConnected, getLedgerAddress } = await import("@/lib/ledger");
+      if (isLedgerConnected()) {
+        setLedgerAddr(await getLedgerAddress().catch(() => null));
+      } else {
+        setLedgerAddr(null);
+      }
+    };
+    check();
+    const interval = setInterval(check, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isLedgerConnected = !!ledgerAddr;
+  const address = ledgerAddr || browserAddress || null;
+  const isConnected = isLedgerConnected || isBrowserConnected;
   const [tab, setTab] = useState<"feed" | "portfolio" | "agents">("feed");
   const [agentCount, setAgentCount] = useState(0);
   const [poolBalance, setPoolBalance] = useState("—");
