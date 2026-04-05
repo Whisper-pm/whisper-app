@@ -82,23 +82,21 @@ export function Header() {
               </button>
             )}
 
-            {/* Browser wallet button — only show if NOT connected via Ledger */}
-            {!wallet.isLedgerConnected && (
-              wallet.isBrowserConnected ? (
-                <button
-                  onClick={() => open()}
-                  className="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition"
-                >
-                  {wallet.browserAddress?.slice(0, 6)}...{wallet.browserAddress?.slice(-4)}
-                </button>
-              ) : (
-                <button
-                  onClick={() => open()}
-                  className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition"
-                >
-                  Connect Wallet
-                </button>
-              )
+            {/* Browser wallet button — always visible */}
+            {wallet.isBrowserConnected ? (
+              <button
+                onClick={() => open()}
+                className="bg-gray-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-gray-700 transition"
+              >
+                {wallet.browserAddress?.slice(0, 6)}...{wallet.browserAddress?.slice(-4)}
+              </button>
+            ) : (
+              <button
+                onClick={() => open()}
+                className="bg-white text-black text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-200 transition"
+              >
+                Connect Wallet
+              </button>
             )}
           </div>
         </div>
