@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAppKit } from "@reown/appkit/react";
+import { useAppKitAccount } from "@reown/appkit/react";
+import { useWalletClient } from "wagmi";
 import { Providers } from "./providers";
 import { Header } from "@/components/Header";
 import { Feed } from "@/components/Feed";
@@ -12,7 +13,15 @@ import { useWallet } from "@/lib/wallet-context";
 
 
 function AppContent() {
-  const { activeAddress: address, isConnected, walletType, walletClient, isLedgerConnected } = useWallet();
+  // Browser wallet from AppKit (Rabby, MetaMask, etc.)
+  const { address: browserAddress, isConnected: isBrowserConnected } = useAppKitAccount();
+  const { data: walletClient } = useWalletClient();
+  // Ledger from our wallet context
+  const { ledgerAddress, isLedgerConnected, connectLedger, disconnectLedger } = useWallet();
+
+  // Active address: Ledger takes priority
+  const address = ledgerAddress || browserAddress || null;
+  const isConnected = isLedgerConnected || isBrowserConnected;
   const [tab, setTab] = useState<"feed" | "portfolio" | "agents">("feed");
   const [agentCount, setAgentCount] = useState(0);
   const [poolBalance, setPoolBalance] = useState("—");
