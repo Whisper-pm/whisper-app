@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
     // This is the ONLY step that uses a backend private key
     // ============================================================
     log("cctp:relay", "started");
-    const amoyRelayGas = { maxFeePerGas: 80000000000n, maxPriorityFeePerGas: 30000000000n };
+    const amoyRelayGas = { maxFeePerGas: 50000000000n, maxPriorityFeePerGas: 26000000000n };
     const receiveTx = await gasTankWallet.writeContract({
       address: MSG_TRANSMITTER, abi: mtAbi, functionName: "receiveMessage",
       args: [attestation.message as `0x${string}`, attestation.attestation as `0x${string}`],
