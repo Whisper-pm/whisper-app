@@ -46,10 +46,17 @@ function AppContent() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPoolBalance(data.pool);
-        setOnChainBalance(data.usdc);
+        setPoolBalance(data.pool ?? "0.00");
+        setOnChainBalance(data.usdc ?? "0.00");
+      } else {
+        // API failed — show 0 instead of dash
+        setPoolBalance("0.00");
+        setOnChainBalance("0.00");
       }
-    } catch {}
+    } catch {
+      setPoolBalance("0.00");
+      setOnChainBalance("0.00");
+    }
   }, [isConnected, address]);
 
   // Fetch agent count
