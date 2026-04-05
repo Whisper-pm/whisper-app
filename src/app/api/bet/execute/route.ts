@@ -174,11 +174,10 @@ export async function POST(req: NextRequest) {
     log("cctp:approve2", "done", approveTx2);
 
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
-    const burnNonce = await basePub.getTransactionCount({ address: burnerAddress });
     const burnTx = await burnerBaseWallet.writeContract({
       address: TOKEN_MESSENGER, abi: tmAbi, functionName: "depositForBurn",
       args: [burnerUsdc, CONFIG.cctp.domains.polygonAmoy, recipient, USDC_BASE, ZERO, burnerUsdc / 50n, 1000],
-      nonce: burnNonce,
+      nonce: approveNonce1 + 2,
     });
     await basePub.waitForTransactionReceipt({ hash: burnTx });
     log("cctp:burn", "done", burnTx);
