@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     const gasTankWallet = createWalletClient({ account: gasTank, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
 
     // Setup Unlink — seed derived from bet owner's address
-    const seed = crypto.createHash("sha512").update("whisper:bet:" + betOwner).digest();
+    const seed = crypto.createHash("sha512").update("whisper:" + betOwner).digest();
     const unlinkAcc = unlinkAccount.fromSeed({ seed: new Uint8Array(seed) });
 
     // Unlink SDK needs an EVM interface for read operations only
