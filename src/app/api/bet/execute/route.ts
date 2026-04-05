@@ -164,9 +164,11 @@ export async function POST(req: NextRequest) {
     log("cctp:bridge", "started");
     const burnerBaseWallet = createWalletClient({ account: burnerAccount, chain: baseSepolia, transport: http(CONFIG.chains.baseSepolia.rpc) });
 
-    const TOKEN_MINTER = CONFIG.cctp.tokenMinter;
-    const approveTx = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [TOKEN_MINTER, burnerUsdc] });
+    // Approve USDC to TokenMessenger for CCTP burn
+    const approveNonce = await basePub.getTransactionCount({ address: burnerAddress });
+    const approveTx = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [TOKEN_MESSENGER, burnerUsdc], nonce: approveNonce });
     await basePub.waitForTransactionReceipt({ hash: approveTx });
+    log("cctp:approve", "done", approveTx);
 
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
     const burnNonce = await basePub.getTransactionCount({ address: burnerAddress });
