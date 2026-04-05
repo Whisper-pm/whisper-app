@@ -243,7 +243,6 @@ export async function POST(req: NextRequest) {
     // STEP 4: Bet on Polymarket (burner signs on Amoy)
     // ============================================================
     const burnerAmoyWallet = createWalletClient({ account: burnerAccount, chain: amoyChain, transport: http(CONFIG.chains.polygonAmoy.rpc) });
-    const amoyGas = { maxFeePerGas: 80000000000n, maxPriorityFeePerGas: 30000000000n };
 
     log("polymarket:prepare", "started");
     const questionText = marketQuestion || conditionId;
@@ -251,21 +250,28 @@ export async function POST(req: NextRequest) {
     const oracle = burnerAddress as `0x${string}`;
     const testnetConditionId = keccak256(encodePacked(["address", "bytes32", "uint256"], [oracle, questionId, 2n]));
 
+    let burnerAmoyNonce = await amoyPub.getTransactionCount({ address: burnerAddress });
     try {
       const prepareTx = await burnerAmoyWallet.writeContract({
-        address: CTF, abi: ctfAbi, functionName: "prepareCondition", args: [oracle, questionId, 2n], ...amoyGas,
+        address: CTF, abi: ctfAbi, functionName: "prepareCondition", args: [oracle, questionId, 2n],
+        nonce: burnerAmoyNonce, ...amoyRelayGas,
       });
       await amoyPub.waitForTransactionReceipt({ hash: prepareTx });
       log("polymarket:prepare", "done", prepareTx);
+      burnerAmoyNonce++;
     } catch {
       log("polymarket:prepare", "exists");
     }
 
     log("polymarket:split", "started");
-    const ctfApproveTx = await burnerAmoyWallet.writeContract({ address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, burnerAmoyBalance], ...amoyGas });
+    const ctfApproveTx = await burnerAmoyWallet.writeContract({
+      address: USDC_AMOY, abi: erc20Abi, functionName: "approve", args: [CTF, burnerAmoyBalance],
+      nonce: burnerAmoyNonce, ...amoyRelayGas,
+    });
     await amoyPub.waitForTransactionReceipt({ hash: ctfApproveTx });
-    const splitNonce = await amoyPub.getTransactionCount({ address: burnerAddress });
-    const splitTx = await burnerAmoyWallet.writeContract({ nonce: splitNonce, ...amoyGas,
+    await new Promise((r) => setTimeout(r, 3000));
+    const splitTx = await burnerAmoyWallet.writeContract({
+      nonce: burnerAmoyNonce + 1, ...amoyRelayGas,
       address: CTF, abi: ctfAbi, functionName: "splitPosition",
       args: [USDC_AMOY, ZERO, testnetConditionId, [1n, 2n], burnerAmoyBalance],
     });
