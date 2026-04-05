@@ -9,19 +9,12 @@ import { Feed } from "@/components/Feed";
 import { DepositPanel } from "@/components/DepositPanel";
 import { Portfolio } from "@/components/Portfolio";
 import { AgentDashboard } from "@/components/AgentDashboard";
-import { useWallet } from "@/lib/wallet-context";
 
 
 function AppContent() {
-  // Browser wallet from AppKit (Rabby, MetaMask, etc.)
-  const { address: browserAddress, isConnected: isBrowserConnected } = useAppKitAccount();
+  const { address, isConnected } = useAppKitAccount();
   const { data: walletClient } = useWalletClient();
-  // Ledger from our wallet context
-  const { ledgerAddress, isLedgerConnected, connectLedger, disconnectLedger } = useWallet();
-
-  // Active address: Ledger takes priority
-  const address = ledgerAddress || browserAddress || null;
-  const isConnected = isLedgerConnected || isBrowserConnected;
+  const isLedgerConnected = false; // TODO: wire back later
   const [tab, setTab] = useState<"feed" | "portfolio" | "agents">("feed");
   const [agentCount, setAgentCount] = useState(0);
   const [poolBalance, setPoolBalance] = useState("—");
