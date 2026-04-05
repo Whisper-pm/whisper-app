@@ -168,10 +168,10 @@ export async function POST(req: NextRequest) {
     const approveNonce1 = await basePub.getTransactionCount({ address: burnerAddress });
     const approveTx1 = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [TOKEN_MESSENGER, burnerUsdc], nonce: approveNonce1 });
     await basePub.waitForTransactionReceipt({ hash: approveTx1 });
-    const approveNonce2 = await basePub.getTransactionCount({ address: burnerAddress });
-    const approveTx2 = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [CONFIG.cctp.tokenMinter, burnerUsdc], nonce: approveNonce2 });
+    log("cctp:approve1", "done", approveTx1);
+    const approveTx2 = await burnerBaseWallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [CONFIG.cctp.tokenMinter, burnerUsdc], nonce: approveNonce1 + 1 });
     await basePub.waitForTransactionReceipt({ hash: approveTx2 });
-    log("cctp:approve", "done", approveTx1);
+    log("cctp:approve2", "done", approveTx2);
 
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
     const burnNonce = await basePub.getTransactionCount({ address: burnerAddress });
