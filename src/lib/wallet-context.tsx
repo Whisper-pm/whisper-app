@@ -72,13 +72,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   // Ledger takes priority if connected
   const walletType: WalletType = isLedgerConnected ? "ledger" : isBrowserConnected ? "browser" : null;
-  const activeAddress = ledgerAddress || (isBrowserConnected ? browserAddress : null) || null;
+  const activeAddress = ledgerAddress || browserAddress || null;
 
   return (
     <WalletContext.Provider value={{
       activeAddress,
       walletType,
-      isConnected: !!activeAddress,
+      isConnected: isLedgerConnected || isBrowserConnected,
       ledgerAddress,
       connectLedger: connectLedgerFn,
       disconnectLedger: disconnectLedgerFn,
