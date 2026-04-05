@@ -158,7 +158,7 @@ export function BetModal({ market, side, userAddress, onClose, onConfirm }: Prop
       }
 
       // 2-4. Execute full pipeline via backend API
-      // Backend does: Unlink deposit → Burner → CCTP bridge → Polymarket split
+      console.log("[Bet] Ledger signed, calling backend...", { ledgerSignature: !!ledgerSignature, ledgerAddress, userAddress });
       setStep("unlink");
       const res = await fetch("/api/bet/execute", {
         method: "POST",
