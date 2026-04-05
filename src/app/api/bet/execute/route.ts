@@ -173,6 +173,9 @@ export async function POST(req: NextRequest) {
     await basePub.waitForTransactionReceipt({ hash: approveTx2 });
     log("cctp:approve2", "done", approveTx2);
 
+    // Wait for state propagation on RPC
+    await new Promise((r) => setTimeout(r, 3000));
+
     const recipient = pad(burnerAddress as `0x${string}`, { size: 32 });
     const burnTx = await burnerBaseWallet.writeContract({
       address: TOKEN_MESSENGER, abi: tmAbi, functionName: "depositForBurn",
